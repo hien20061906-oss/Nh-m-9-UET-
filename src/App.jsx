@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Physics, useBox, usePlane, useRaycastVehicle, useCylinder } from '@react-three/cannon';
+import { Physics, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere } from '@react-three/cannon';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 
@@ -88,98 +88,127 @@ const Car = ({ folder, lastPos, lastRot }) => {
   const lastChange = useRef(false);
   const { camera } = useThree();
 
-  // --- Physics chassis  ---
+  // --- Physics chassis (Trở về useBox chuẩn của bạn) ---
   const chassisWidth = 0.8;
   const chassisHeight = 0.5;
   const chassisDepth = 2.03;
 
   const [chassisRef, chassisApi] = useBox(() => ({
-    mass: 150,
+    mass: 150, 
     position: lastPos.current,
     rotation: lastRot.current,
     velocity: [0, 0, 0], 
     angularVelocity: [0, 0, 0], 
     args: [chassisWidth, chassisHeight, chassisDepth],
     allowSleep: true,
-    linearDamping: 0.15,
-    angularDamping: 0.3,
+    linearDamping: 0.2, 
+    angularDamping: 0.9, 
+    angularFactor: [0, 1, 0],
   }));
 
-  // Đăng ký theo dõi tọa độ trực tiếp từ lõi vật lý (Chính xác nhất)
   useEffect(() => {
     const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
     const unsubRot = chassisApi.rotation.subscribe(v => { lastRot.current = v; });
     return () => { unsubPos(); unsubRot(); };
   }, [chassisApi, lastPos, lastRot]);
 
-  // --- Wheel setup (G10 chuẩn) ---
+  // --- Hệ thống treo CÂN BẰNG ---
   const wheelRadius = 0.25;
-  const wheelHeight  = 0.24;
+  const wheelHeight = 0.25;
 
-  const wInfo = useMemo(() => ({
-    radius: wheelRadius,
-    directionLocal: [0, -1, 0],
-    suspensionStiffness: 60,
-    suspensionRestLength: 0.35,
-    maxSuspensionForce: 100000,
-    maxSuspensionTravel: 0.3,
-    dampingRelaxation: 2.3,
-    dampingCompression: 4.4,
-    frictionSlip: 1.5,
-    rollInfluence: 0.0, // Đặt bằng 0 để triệt tiêu hoàn toàn lực lật thân xe
-    axleLocal: [-1, 0, 0],
-    useCustomSlidingRotationalSpeed: true,
-    customSlidingRotationalSpeed: -30
-  }), []);
-
-  // Bảng cấu hình vị trí bánh xe và thân xe cho từng loại xe
   const vehicleConfigs = {
     default: {
       front: -0.55,
       back: 0.55,
       width: 0.55,
       wheelY: 0,
-      chassisY: -0.25
+      chassisY: -0.25,
+      suspensionStiffness: 150, 
+      dampingRelaxation: 6.0, 
+      dampingCompression: 6.0,
     },
     alternative: {
       front: -0.82,
       back: 0.82,
       width: 0.4,
       wheelY: -0.1,
-      chassisY: -0.25
+      chassisY: -0.25,
+      suspensionStiffness: 150,
+      dampingRelaxation: 6.0,
+      dampingCompression: 6.0,
+    },
+    rolls_royce: {
+      front: -1.145,
+      back: 0.821,
+      width: 0.45,
+      wheelY: 0,
+      chassisY: -0.25,
+      suspensionStiffness: 25, 
+      dampingRelaxation: 4.5, 
+      dampingCompression: 4.5,
+    },
+    ship: {
+      front: -0.55,
+      back: 0.55,
+      width: 0.55,
+      wheelY: 0,
+      chassisY: -0.25,
+      suspensionStiffness: 150,
+      dampingRelaxation: 6.0,
+      dampingCompression: 6.0,
     }
   };
 
   const config = vehicleConfigs[folder] || vehicleConfigs.default;
-  const { front: frontOffset, back: backOffset, width: offsetWidth, wheelY, chassisY } = config;
+  const { front: fO, back: bO, width: oW, wheelY, chassisY } = config;
 
-  const wheelInfos = useMemo(() => [
-    { ...wInfo, chassisConnectionPointLocal: [-offsetWidth, wheelY, frontOffset], isFrontWheel: true,  frictionSlip: 1.5 },
-    { ...wInfo, chassisConnectionPointLocal: [ offsetWidth, wheelY, frontOffset], isFrontWheel: true,  frictionSlip: 1.5 },
-    { ...wInfo, chassisConnectionPointLocal: [-offsetWidth, wheelY, backOffset ], isFrontWheel: false, frictionSlip: 1.5 },
-    { ...wInfo, chassisConnectionPointLocal: [ offsetWidth, wheelY, backOffset ], isFrontWheel: false, frictionSlip: 1.5 },
-  ], [wInfo, folder, frontOffset, backOffset, offsetWidth, wheelY]);
+  const wheelInfos = useMemo(() => {
+    // Nếu là Rolls Royce, sử dụng bộ tọa độ riêng biệt để dễ chỉnh sửa
+    if (folder === 'rolls_royce') {
+      const { suspensionStiffness, dampingRelaxation, dampingCompression } = config;
+      return [
+        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
+        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
+        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0,  0.821], isFrontWheel: false },
+        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0,  0.821], isFrontWheel: false },
+      ];
+    }
+
+    // Các xe khác vẫn dùng công thức chung dựa trên vehicleConfigs
+    return [
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, fO], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, fO], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, bO], isFrontWheel: false },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, bO], isFrontWheel: false },
+    ];
+  }, [folder, config, oW, wheelY, fO, bO]);
 
   const wheel0 = useRef(null);
   const wheel1 = useRef(null);
   const wheel2 = useRef(null);
   const wheel3 = useRef(null);
-  const firstFrame = useRef(true); // <--- Chuyển lên đây cho đúng luật React hooks
+  const firstFrame = useRef(true);
 
   const [vehicle, vehicleApi] = useRaycastVehicle(() => ({
     chassisBody: chassisRef,
     wheelInfos,
     wheels: [wheel0, wheel1, wheel2, wheel3],
     indexForwardAxis: 2,
-    indexRightAxis:   0,
-    indexUpAxis:      1,
+    indexRightAxis: 0,
+    indexUpAxis: 1,
   }));
+
 
   // --- Models ---
   const modelFolder = folder;
-  const chassisFile = folder === 'alternative' ? 'chassis2.glb' : 'chassis.glb';
+  const chassisFile = modelFolder === 'alternative' ? 'chassis2.glb' : 'chassis.glb';
   const { scene: chassisScene } = useGLTF(`/models/car/${modelFolder}/${chassisFile}`);
 
+  const velocity = useRef([0, 0, 0]);
+  useEffect(() => {
+    const unsub = chassisApi.velocity.subscribe(v => { velocity.current = v; });
+    return unsub;
+  }, [chassisApi]);
 
   // Steering state
   const currentSteering = useRef(0);
@@ -223,8 +252,6 @@ const Car = ({ folder, lastPos, lastRot }) => {
     
     const dt = Math.min(delta, 0.05); // clamp delta để tránh spike lag
 
-    // Chống bốc đầu triệt để đã bị xoá vì gây lỗi không chạy được
-
     // Reset xe
     if (reset && chassisRef.current) {
       chassisApi.position.set(chassisRef.current.position.x, chassisRef.current.position.y + 0.5, chassisRef.current.position.z);
@@ -233,10 +260,16 @@ const Car = ({ folder, lastPos, lastRot }) => {
       chassisApi.rotation.set(0, chassisRef.current.rotation.y, 0);
     }
 
-    // G10 chuẩn - điều chỉnh để có thể quay xe (donuts)
-    const engineForce = boost ? 900 : 500; // Tăng mạnh lực máy khi giữ Shift (boost)
-    const maxSteerVal = Math.PI * 0.25; // Trả góc đánh lái về 45 độ cho tự nhiên, 90 độ quá ảo
-    const steerSpeed = delta * 12; // Tốc độ xoay vô lăng nhanh hơn
+    const engineForce = boost ? 900 : 500; 
+    const speed = Math.sqrt(velocity.current[0]**2 + velocity.current[2]**2);
+    
+    // Khôi phục Anti-Drift mạnh mẽ: Tăng lực nén
+    const downforce = speed * 120;
+    chassisApi.applyLocalForce([0, -downforce, 0], [0, 0, 0]);
+
+    // Speed-sensitive steering (0.45 baseline như bản cũ bạn thích)
+    const maxSteerVal = Math.max(0.1, 0.45 - (speed * 0.012)); 
+    const steerSpeed = delta * 10; 
 
     // Steering làm mượt
     if (left) {
@@ -262,8 +295,6 @@ const Car = ({ folder, lastPos, lastRot }) => {
     if (forward) {
       vehicleApi.applyEngineForce(engineForce, 2);
       vehicleApi.applyEngineForce(engineForce, 3);
-      // Chống bốc đầu (Wheelie) khi tăng tốc bằng cách ghì mũi xe xuống
-      chassisApi.applyLocalForce([0, -500, 0], [0, 0, -0.55]);
     } else if (backward) {
       vehicleApi.applyEngineForce(-engineForce, 2);
       vehicleApi.applyEngineForce(-engineForce, 3);
@@ -276,8 +307,8 @@ const Car = ({ folder, lastPos, lastRot }) => {
     if (brake !== isBraking.current) {
       isBraking.current = brake;
       if (brake) {
-        chassisApi.linearDamping.set(0.95);  // Tăng lên 0.95 để phanh "ăn" hơn, dừng nhanh hơn
-        chassisApi.angularDamping.set(1.0); // KHÓA CHẾT XOAY: Tuyệt đối không cho xe chúi đầu hay rung lắc
+        chassisApi.linearDamping.set(0.95);
+        chassisApi.angularDamping.set(1.0);
       } else {
         chassisApi.linearDamping.set(0.15);
         chassisApi.angularDamping.set(0.3);
@@ -285,13 +316,11 @@ const Car = ({ folder, lastPos, lastRot }) => {
     }
 
     if (brake) {
-      // Không dùng phanh bánh xe để tránh làm lò xo bị nén gây chúi đầu
       vehicleApi.setBrake(0, 0);
       vehicleApi.setBrake(0, 1);
       vehicleApi.setBrake(0, 2);
       vehicleApi.setBrake(0, 3);
     } else if (!forward && !backward) {
-      // Tự động phanh (Engine Brake) CHỈ bánh sau để chống lật đít khi nhả ga
       const autoBrake = 15; 
       vehicleApi.setBrake(0, 0);
       vehicleApi.setBrake(0, 1);
@@ -351,10 +380,10 @@ const Car = ({ folder, lastPos, lastRot }) => {
         </group>
       </mesh>
 
-      <Wheel key={`${folder}-0`} ref={wheel0} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-1`} ref={wheel1} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-2`} ref={wheel2} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-3`} ref={wheel3} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder} visible={folder !== 'ship'} />
+      <Wheel key={`${folder}-0`} ref={wheel0} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel key={`${folder}-1`} ref={wheel1} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel key={`${folder}-2`} ref={wheel2} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel key={`${folder}-3`} ref={wheel3} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
     </group>
   );
 };
@@ -531,117 +560,13 @@ const Helicopter = ({ lastPos, lastRot }) => {
       <React.Suspense fallback={<mesh><boxGeometry args={[1, 1, 3]} /><meshStandardMaterial color="gray" /></mesh>}>
         <primitive object={scene} />
       </React.Suspense>
-      {/* Tải cánh quạt từ các file riêng biệt */}
       <Propeller url="/models/car/helicopter/rotor_main.glb" axis="y" position={[-0.009, 0.75, 0.01]} scale={0.01} />
       <Propeller url="/models/car/helicopter/rotor_tail.glb" axis="y" position={[-0.13, 0.83, 1.59]} scale={0.002} rotation={[0, 0, Math.PI / 2]} offset={[0, 0, 0]} />
     </group>
   );
 };
 
-// --- NEW SHIP COMPONENT (FROM SCRATCH) ---
-const Ship = ({ lastPos, lastRot }) => {
-  const { scene } = useGLTF('/models/car/ship/chassis.glb');
-  const keys = usePlayerControls();
-  const { camera, gl } = useThree();
-  const smoothRot = useRef(0);
-  const camAngle = useRef({ x: 0, y: Math.PI / 8, dist: 18 });
-  const firstFrame = useRef(true);
-
-  const [ref, api] = useBox(() => ({
-    mass: 1000,
-    position: lastPos.current,
-    rotation: lastRot.current,
-    angularDamping: 0.99,
-    linearDamping: 0.8,
-    angularFactor: [0, 1, 0],
-  }));
-
-  useEffect(() => {
-    const move = (e) => {
-      if (document.pointerLockElement) {
-        camAngle.current.x -= e.movementX * 0.002;
-        camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.5, camAngle.current.y + e.movementY * 0.002));
-      }
-    };
-    const wheel = (e) => {
-      camAngle.current.dist = Math.max(8, Math.min(40, camAngle.current.dist + e.deltaY * 0.01));
-    };
-    const down = (e) => {
-      if (e.button === 1) { // Middle mouse down
-        gl.domElement.requestPointerLock();
-      }
-    };
-    const up = (e) => {
-      if (e.button === 1) { // Middle mouse up
-        if (document.pointerLockElement) document.exitPointerLock();
-      }
-    };
-    window.addEventListener('mousedown', down);
-    window.addEventListener('mouseup', up);
-    window.addEventListener('mousemove', move);
-    window.addEventListener('wheel', wheel);
-    return () => {
-      window.removeEventListener('mousedown', down);
-      window.removeEventListener('mouseup', up);
-      window.removeEventListener('mousemove', move);
-      window.removeEventListener('wheel', wheel);
-    };
-  }, [gl]);
-
-  useFrame((state, delta) => {
-    if (!ref.current) return;
-    const { forward, backward, left, right, yawLeft, yawRight } = keys.current;
-    const moveForce = 4000;
-    const torque = 1200;
-
-    if (forward) api.applyLocalForce([0, 0, -moveForce], [0, 0, 0]);
-    if (backward) api.applyLocalForce([0, 0, moveForce], [0, 0, 0]);
-    if (left || yawLeft) api.applyTorque([0, torque, 0]);
-    if (right || yawRight) api.applyTorque([0, -torque, 0]);
-
-    // --- CAMERA LOGIC (PROFESSIONAL) ---
-    const currentPosition = new THREE.Vector3();
-    ref.current.getWorldPosition(currentPosition);
-    const rawRot = ref.current.rotation.y;
-
-    // Làm mượt góc xoay
-    let diff = rawRot - smoothRot.current;
-    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
-    
-    if (firstFrame.current) {
-      smoothRot.current = rawRot;
-      firstFrame.current = false;
-    } else {
-      smoothRot.current += diff * (1 - Math.exp(-20 * delta));
-    }
-
-    const dist = camAngle.current.dist;
-    const ax = camAngle.current.x;
-    const ay = camAngle.current.y;
-    
-    const horizontalDist = Math.cos(ay) * dist;
-    const offsetX = Math.sin(ax) * horizontalDist;
-    const offsetY = Math.sin(ay) * dist;
-    const offsetZ = Math.cos(ax) * horizontalDist;
-    
-    const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
-    idealOffset.applyEuler(new THREE.Euler(0, smoothRot.current, 0));
-    
-    // Khóa cứng camera để tránh nhòe hình
-    camera.position.copy(currentPosition).add(idealOffset);
-    
-    const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 1, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
-    camera.lookAt(lookAtPos);
-  });
-
-  return (
-    <group ref={ref}>
-      <React.Suspense fallback={<mesh><boxGeometry args={[2, 1, 5]} /><meshStandardMaterial color="blue" /></mesh>}>
-        <primitive object={scene} />
-      </React.Suspense>
-    </group>
-  );
-};
+// Ship component đã được xoá — ship giờ dùng Car với folder='ship' và bánh xe ẩn
 
 // ─── MAP OBJECT ──────────────────────────────────────────────────────────────
 const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation = [0, 0, 0] }) => {
@@ -659,11 +584,11 @@ function Game({ vehicleFolder, setVehicleFolder }) {
   const lastRot = useRef([0, 0, 0]);
 
   return (
-    <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0, restitution: 0.1 }}>
+    <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
       {vehicleFolder === 'helicopter' ? (
         <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} />
       ) : vehicleFolder === 'ship' ? (
-        <Ship key="ship" lastPos={lastPos} lastRot={lastRot} />
+        <Car key="ship" folder="ship" lastPos={lastPos} lastRot={lastRot} />
       ) : (
         <Car 
           key={vehicleFolder} 
@@ -712,7 +637,8 @@ export default function App() {
   const vehiclePrices = {
     alternative: 500,
     helicopter: 1500,
-    ship: 1000
+    ship: 1000,
+    rolls_royce: 2500
   };
 
   const buyVehicle = (type) => {
@@ -720,7 +646,8 @@ export default function App() {
     if (gold >= price) {
       setGold(prev => prev - price);
       setUnlockedVehicles(prev => [...prev, type]);
-      alert(`Chúc mừng! Bạn đã mở khóa ${type === 'helicopter' ? 'Máy Bay' : type === 'ship' ? 'Tàu Thủy' : 'Xe Cảnh Sát'}!`);
+      const vehicleNames = { alternative: 'Xe Cảnh Sát', helicopter: 'Máy Bay', ship: 'Tàu Thủy', rolls_royce: 'Rolls Royce' };
+      alert(`Chúc mừng! Bạn đã mở khóa ${vehicleNames[type]}!`);
     } else {
       alert('Bạn không đủ vàng!');
     }
@@ -1045,6 +972,16 @@ export default function App() {
                 <h3>Tàu Thủy</h3>
               </div>
             )}
+            
+            {unlockedVehicles.includes('rolls_royce') && (
+              <div 
+                className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''}`}
+                onClick={() => { setVehicleFolder('rolls_royce'); setShowMenu(false); }}
+              >
+                <span className="vehicle-icon">💎</span>
+                <h3>Rolls Royce</h3>
+              </div>
+            )}
           </div>
           <button className="close-btn" onClick={() => setShowMenu(false)}>ĐÓNG</button>
         </div>
@@ -1083,6 +1020,17 @@ export default function App() {
               <span className="price-tag">💰 1000</span>
               {!unlockedVehicles.includes('ship') ? (
                 <button className="buy-btn" onClick={() => buyVehicle('ship')}>MUA</button>
+              ) : (
+                <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
+              )}
+            </div>
+
+            <div className="vehicle-option">
+              <span className="vehicle-icon">💎</span>
+              <h3>Rolls Royce</h3>
+              <span className="price-tag">💰 2500</span>
+              {!unlockedVehicles.includes('rolls_royce') ? (
+                <button className="buy-btn" onClick={() => buyVehicle('rolls_royce')}>MUA</button>
               ) : (
                 <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
               )}
