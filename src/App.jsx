@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Physics, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere } from '@react-three/cannon';
+import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere } from '@react-three/cannon';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 
@@ -591,22 +591,33 @@ const Helicopter = ({ lastPos, lastRot }) => {
 // Ship component đã được xoá — ship giờ dùng Car với folder='ship' và bánh xe ẩn
 
 // ─── MAP OBJECT ──────────────────────────────────────────────────────────────
-const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation = [0, 0, 0] }) => {
+const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation = [0, 0, 0], hasPhysics = true }) => {
   const { scene } = useGLTF(`/models/map/${filename}`);
-  const [ref] = useBox(() => ({ type: 'Static', position, args, rotation }));
+  const [ref] = useBox(() => ({ 
+    type: 'Static', 
+    position, 
+    args, 
+    rotation,
+    collisionFilterGroup: hasPhysics ? 1 : 0,
+    collisionFilterMask: hasPhysics ? 1 : 0,
+  }));
+  
+  if (!hasPhysics) {
+    return <primitive object={scene.clone()} position={position} scale={scale} rotation={rotation} />;
+  }
   return <primitive ref={ref} object={scene.clone()} scale={scale} />;
 };
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
-function Game({ vehicleFolder, setVehicleFolder }) {
+function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const controls = usePlayerControls();
   const lastChange = useRef(false);
   
   const lastPos = useRef([0, 0.5, 0]);
   const lastRot = useRef([0, 0, 0]);
 
-  return (
-    <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
+  const contents = (
+    <>
       {vehicleFolder === 'helicopter' ? (
         <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} />
       ) : vehicleFolder === 'ship' ? (
@@ -620,7 +631,13 @@ function Game({ vehicleFolder, setVehicleFolder }) {
         />
       )}
       <Ground />
-      <MapObject filename="house.glb" position={[10, 0, -20]} scale={1} args={[8, 10, 8]} />
+      <MapObject filename="house.glb" position={[10, 0, -20]} scale={1} args={[8, 10, 8]} hasPhysics={false} />
+    </>
+  );
+
+  return (
+    <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
+      {debug ? <Debug color="white" scale={1.02}>{contents}</Debug> : contents}
     </Physics>
   );
 }
@@ -629,6 +646,7 @@ export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
   const [showMenu, setShowMenu] = useState(false);
   const [showShop, setShowShop] = useState(false);
+  const [debug, setDebug] = useState(false);
   
   // Hệ thống vàng và xe đã mở khóa
   const [gold, setGold] = useState(10000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
@@ -905,6 +923,9 @@ export default function App() {
         </div>
         <button className="menu-button" onClick={() => setShowMenu(true)}>Ga-ra</button>
         <button className="shop-button" onClick={() => setShowShop(true)}>Shop 🛒</button>
+        <button className="menu-button" onClick={() => setDebug(!debug)} style={{ background: debug ? '#ff4444' : 'rgba(255,255,255,0.15)', border: debug ? '1px solid #ff0000' : '1px solid rgba(255,255,255,0.2)' }}>
+          Hitbox: {debug ? 'ON' : 'OFF'}
+        </button>
         <div style={{
           color: 'rgba(255,255,255,0.7)',
           fontSize: '11px',
@@ -1114,7 +1135,7 @@ export default function App() {
         <directionalLight position={[10, 20, 10]} intensity={1.5} color="#ffe0c0" />
         <directionalLight position={[-10, 10, -10]} intensity={0.5} color="#ffcc88" />
         
-        <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} />
+        <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
       </Canvas>
     </div>
   );
