@@ -94,7 +94,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
   const chassisDepth = 2.03;
 
   const [chassisRef, chassisApi] = useBox(() => ({
-    mass: 150, 
+    mass: config.mass || 150, 
     position: lastPos.current,
     rotation: lastRot.current,
     velocity: [0, 0, 0], 
@@ -126,6 +126,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       suspensionStiffness: 150, 
       dampingRelaxation: 6.0, 
       dampingCompression: 6.0,
+      mass: 150,
     },
     alternative: {
       front: -0.82,
@@ -136,6 +137,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       suspensionStiffness: 150,
       dampingRelaxation: 6.0,
       dampingCompression: 6.0,
+      mass: 150,
     },
     rolls_royce: {
       front: -1.145,
@@ -143,9 +145,10 @@ const Car = ({ folder, lastPos, lastRot }) => {
       width: 0.45,
       wheelY: 0,
       chassisY: -0.25,
-      suspensionStiffness: 25, 
-      dampingRelaxation: 4.5, 
-      dampingCompression: 4.5,
+      suspensionStiffness: 150, 
+      dampingRelaxation: 12.0, 
+      dampingCompression: 12.0,
+      mass: 800, // Xe Rolls Royce cực nặng để đầm chắc
     },
     ship: {
       front: -0.55,
@@ -156,6 +159,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       suspensionStiffness: 150,
       dampingRelaxation: 6.0,
       dampingCompression: 6.0,
+      mass: 800, // Thuyền cũng cần nặng để ổn định
     }
   };
 
@@ -167,10 +171,10 @@ const Car = ({ folder, lastPos, lastRot }) => {
     if (folder === 'rolls_royce') {
       const { suspensionStiffness, dampingRelaxation, dampingCompression } = config;
       return [
-        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
-        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
-        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0,  0.821], isFrontWheel: false },
-        { radius: wheelRadius, directionLocal: [0, -0.86, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0,  0.821], isFrontWheel: false },
+        { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
+        { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
+        { radius: wheelRadius, directionLocal: [0, -1, -0.15], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0,  0.821], isFrontWheel: false },
+        { radius: wheelRadius, directionLocal: [0, -1, -0.15], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0,  0.821], isFrontWheel: false },
       ];
     }
 
@@ -260,11 +264,13 @@ const Car = ({ folder, lastPos, lastRot }) => {
       chassisApi.rotation.set(0, chassisRef.current.rotation.y, 0);
     }
 
-    const engineForce = boost ? 900 : 500; 
+    const baseForce = boost ? 900 : 500;
+    // Tỉ lệ lực động cơ theo khối lượng để xe nặng (Rolls Royce) vẫn chạy nhanh
+    const engineForce = baseForce * ((config.mass || 150) / 150); 
     const speed = Math.sqrt(velocity.current[0]**2 + velocity.current[2]**2);
     
-    // Khôi phục Anti-Drift mạnh mẽ: Tăng lực nén
-    const downforce = speed * 120;
+    // Khôi phục Anti-Drift: Thêm lực nén nhưng giới hạn tối đa (cap) để không làm sập phuộc xe
+    const downforce = Math.min(speed * 60, 1800); 
     chassisApi.applyLocalForce([0, -downforce, 0], [0, 0, 0]);
 
     // Speed-sensitive steering (0.45 baseline như bản cũ bạn thích)
@@ -310,27 +316,43 @@ const Car = ({ folder, lastPos, lastRot }) => {
         chassisApi.linearDamping.set(0.95);
         chassisApi.angularDamping.set(1.0);
       } else {
-        chassisApi.linearDamping.set(0.15);
-        chassisApi.angularDamping.set(0.3);
+        chassisApi.linearDamping.set(0.2);
+        // Trả về 0.9 thay vì 0.3 để xe không bị tròng trành khi thả phím
+        chassisApi.angularDamping.set(0.9);
       }
     }
 
+    // --- Braking & Damping Logic ---
     if (brake) {
-      vehicleApi.setBrake(0, 0);
-      vehicleApi.setBrake(0, 1);
-      vehicleApi.setBrake(0, 2);
-      vehicleApi.setBrake(0, 3);
+      vehicleApi.setBrake(100, 2);
+      vehicleApi.setBrake(100, 3);
+      chassisApi.linearDamping.set(0.95);
+      chassisApi.angularDamping.set(1.0);
     } else if (!forward && !backward) {
-      const autoBrake = 15; 
+      // Auto-brake tỉ lệ theo khối lượng để dừng xe nặng
+      const autoBrake = 15 * ((config.mass || 150) / 150); 
       vehicleApi.setBrake(0, 0);
       vehicleApi.setBrake(0, 1);
       vehicleApi.setBrake(autoBrake, 2);
       vehicleApi.setBrake(autoBrake, 3);
     } else {
+      // Đang chạy: nhả phanh
       vehicleApi.setBrake(0, 0);
       vehicleApi.setBrake(0, 1);
       vehicleApi.setBrake(0, 2);
       vehicleApi.setBrake(0, 3);
+    }
+
+    // --- Hard Stop Logic: Triệt tiêu rung lắc tuyệt đối khi xe gần dừng hẳn ---
+    if (!forward && !backward && !left && !right && speed < 0.25) {
+      chassisApi.velocity.set(0, 0, 0);
+      chassisApi.angularVelocity.set(0, 0, 0);
+      chassisApi.linearDamping.set(0.99);
+      chassisApi.angularDamping.set(1.0);
+    } else if (!brake) {
+      // Trả lại damping bình thường khi đang lái xe
+      chassisApi.linearDamping.set(0.2);
+      chassisApi.angularDamping.set(0.9);
     }
 
     // ─── CAMERA ──────────────────────────────────────────────────────────
@@ -598,7 +620,7 @@ function Game({ vehicleFolder, setVehicleFolder }) {
         />
       )}
       <Ground />
-      <MapObject filename="house.glb" position={[10, 0, -20]} scale={1} args={[5, 10, 5]} />
+      <MapObject filename="house.glb" position={[10, 0, -20]} scale={1} args={[8, 10, 8]} />
     </Physics>
   );
 }
@@ -609,7 +631,7 @@ export default function App() {
   const [showShop, setShowShop] = useState(false);
   
   // Hệ thống vàng và xe đã mở khóa
-  const [gold, setGold] = useState(5000); // Tặng 5000 vàng khởi đầu
+  const [gold, setGold] = useState(10000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
   const [unlockedVehicles, setUnlockedVehicles] = useState(['default']);
   
   // Hệ thống hồ sơ người chơi
@@ -883,6 +905,18 @@ export default function App() {
         </div>
         <button className="menu-button" onClick={() => setShowMenu(true)}>Ga-ra</button>
         <button className="shop-button" onClick={() => setShowShop(true)}>Shop 🛒</button>
+        <div style={{
+          color: 'rgba(255,255,255,0.7)',
+          fontSize: '11px',
+          fontStyle: 'italic',
+          marginLeft: '10px',
+          background: 'rgba(0,0,0,0.3)',
+          padding: '5px 10px',
+          borderRadius: '20px',
+          border: '1px solid rgba(255,255,255,0.1)'
+        }}>
+          ⚠️ ĐỢI GAME LOAD MODULE KHOẢNG 20S R MỚI ĐỔI XE
+        </div>
       </div>
 
       {/* Profile Edit Overlay */}
