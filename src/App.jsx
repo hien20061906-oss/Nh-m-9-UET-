@@ -843,7 +843,7 @@ export default function App() {
     if (gold >= price) {
       setGold(prev => prev - price);
       setUnlockedVehicles(prev => [...prev, type]);
-      const vehicleNames = { alternative: 'Xe Cảnh Sát', helicopter: 'Máy Bay', ship: 'Tàu Thủy', rolls_royce: 'Rolls Royce' };
+      const vehicleNames = { alternative: 'Xe Cảnh Sát', helicopter: 'Máy Bay', ship: 'Xe Tăng', rolls_royce: 'Rolls Royce' };
       alert(`Chúc mừng! Bạn đã mở khóa ${vehicleNames[type]}!`);
     } else {
       alert('Bạn không đủ vàng!');
@@ -1262,8 +1262,8 @@ export default function App() {
                 className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''}`}
                 onClick={() => { setVehicleFolder('ship'); setShowMenu(false); }}
               >
-                <span className="vehicle-icon">🚢</span>
-                <h3>Tàu Thủy</h3>
+                <span className="vehicle-icon">🚜</span>
+                <h3>Xe Tăng</h3>
               </div>
             )}
             
@@ -1309,8 +1309,8 @@ export default function App() {
             </div>
 
             <div className="vehicle-option">
-              <span className="vehicle-icon">🚢</span>
-              <h3>Tàu Thủy</h3>
+              <span className="vehicle-icon">🚜</span>
+              <h3>Xe Tăng</h3>
               <span className="price-tag">💰 1000</span>
               {!unlockedVehicles.includes('ship') ? (
                 <button className="buy-btn" onClick={() => buyVehicle('ship')}>MUA</button>
@@ -1334,36 +1334,7 @@ export default function App() {
         </div>
       </div>
 
-      {/* Chú thích điều khiển máy bay */}
-      {vehicleFolder === 'helicopter' && (
-        <div className="heli-controls">
-          <h3>🚁 ĐIỀU KHIỂN</h3>
-          <p><b>W / S:</b> Tiến / Lùi</p>
-          <p><b>A / D:</b> Xoay thân (Yaw)</p>
-          <p><b>Space:</b> Bay lên & Phanh</p>
-          <p><b>Shift:</b> Bay xuống</p>
-        </div>
-      )}
-
-      <style>{`
-        .heli-controls {
-          position: absolute;
-          bottom: 20px;
-          left: 20px;
-          background: rgba(0, 0, 0, 0.7);
-          color: white;
-          padding: 15px;
-          border-radius: 12px;
-          font-family: sans-serif;
-          pointer-events: none;
-          z-index: 100;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          backdrop-filter: blur(5px);
-        }
-        .heli-controls h3 { margin: 0 0 10px 0; font-size: 14px; color: #FF7A2F; }
-        .heli-controls p { margin: 5px 0; font-size: 12px; }
-        .heli-controls b { color: #5bc0de; }
-      `}</style>
+      {/* Removed heli-controls */}
 
       <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: '#f0905a' }}>
         <fog attach="fog" args={['#FF7A2F', 40, 200]} />
