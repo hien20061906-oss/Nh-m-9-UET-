@@ -1132,11 +1132,20 @@ export default function App() {
           .hud-gold { font-size: 10px; }
           .menu-button, .shop-button { padding: 6px 10px; font-size: 11px; border-radius: 6px; }
           
-          /* Giảm kích thước nút bấm ảo khi màn hình ngang bị lùn */
+          /* Giảm kích thước nút bấm ảo và sửa lỗi đè nút khi xoay ngang */
           .mc-btn { width: 50px; height: 50px; font-size: 18px; }
           .mc-left .mc-btn, .mc-right .mc-btn { width: 50px; height: 50px; }
           .mc-top-right .action-btn { width: 50px; height: 50px; font-size: 12px; }
           .mc-left, .mc-right { bottom: 15px; }
+          .mc-left { left: 15px; }
+          .mc-right { right: 15px; }
+          .mc-top-right { 
+            top: auto; bottom: 15px; right: 80px; 
+            transform: none; 
+            flex-direction: column; 
+            gap: 6px; 
+          }
+          .mc-right { gap: 6px; }
         }
       `}</style>
 
