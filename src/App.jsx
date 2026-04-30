@@ -1136,11 +1136,11 @@ export default function App() {
           .mc-btn { width: 50px; height: 50px; font-size: 18px; }
           .mc-left .mc-btn, .mc-right .mc-btn { width: 50px; height: 50px; }
           .mc-top-right .action-btn { width: 50px; height: 50px; font-size: 12px; }
-          .mc-left, .mc-right { bottom: 15px; }
-          .mc-left { left: 15px; }
-          .mc-right { right: 15px; }
+          .mc-left, .mc-right { bottom: 50px; }
+          .mc-left { left: 20px; }
+          .mc-right { right: 20px; }
           .mc-top-right { 
-            top: auto; bottom: 15px; right: 80px; 
+            top: auto; bottom: 50px; right: 85px; 
             transform: none; 
             flex-direction: column; 
             gap: 6px; 
