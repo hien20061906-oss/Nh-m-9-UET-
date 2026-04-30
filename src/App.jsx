@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
-import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere } from '@react-three/cannon';
+import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
+import { threeToCannon, ShapeType } from 'three-to-cannon';
 
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
 function usePlayerControls() {
@@ -15,8 +16,8 @@ function usePlayerControls() {
     const down = (e) => {
       if (e.code === 'KeyW' || e.code === 'ArrowUp')    keys.current.forward  = true;
       if (e.code === 'KeyS' || e.code === 'ArrowDown')  keys.current.backward = true;
-      if (e.code === 'KeyA' || e.code === 'ArrowLeft')  keys.current.left     = true;
-      if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.current.right    = true;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft')  { keys.current.left = true; keys.current.yawLeft = true; }
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') { keys.current.right = true; keys.current.yawRight = true; }
       if (e.code === 'KeyQ')                            keys.current.yawLeft  = true;
       if (e.code === 'KeyE')                            keys.current.yawRight = true;
       if (e.code === 'Space') { keys.current.brake = true; keys.current.up = true; }
@@ -27,8 +28,8 @@ function usePlayerControls() {
     const up = (e) => {
       if (e.code === 'KeyW' || e.code === 'ArrowUp')    keys.current.forward  = false;
       if (e.code === 'KeyS' || e.code === 'ArrowDown')  keys.current.backward = false;
-      if (e.code === 'KeyA' || e.code === 'ArrowLeft')  keys.current.left     = false;
-      if (e.code === 'KeyD' || e.code === 'ArrowRight') keys.current.right    = false;
+      if (e.code === 'KeyA' || e.code === 'ArrowLeft')  { keys.current.left = false; keys.current.yawLeft = false; }
+      if (e.code === 'KeyD' || e.code === 'ArrowRight') { keys.current.right = false; keys.current.yawRight = false; }
       if (e.code === 'KeyQ')                            keys.current.yawLeft  = false;
       if (e.code === 'KeyE')                            keys.current.yawRight = false;
       if (e.code === 'Space') { keys.current.brake = false; keys.current.up = false; }
@@ -90,31 +91,9 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   // --- Physics chassis (Trở về useBox chuẩn của bạn) ---
   const chassisWidth = 0.8;
-  const chassisHeight = 0.5;
+  // Làm khung vật lý mỏng lại để KHÔNG BAO GIỜ cạ gầm vào mặt đường
+  const chassisHeight = 0.2;
   const chassisDepth = 2.03;
-
-  const [chassisRef, chassisApi] = useBox(() => ({
-    mass: config.mass || 150, 
-    position: lastPos.current,
-    rotation: lastRot.current,
-    velocity: [0, 0, 0], 
-    angularVelocity: [0, 0, 0], 
-    args: [chassisWidth, chassisHeight, chassisDepth],
-    allowSleep: true,
-    linearDamping: 0.2, 
-    angularDamping: 0.9, 
-    angularFactor: [0, 1, 0],
-  }));
-
-  useEffect(() => {
-    const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
-    const unsubRot = chassisApi.rotation.subscribe(v => { lastRot.current = v; });
-    return () => { unsubPos(); unsubRot(); };
-  }, [chassisApi, lastPos, lastRot]);
-
-  // --- Hệ thống treo CÂN BẰNG ---
-  const wheelRadius = 0.25;
-  const wheelHeight = 0.25;
 
   const vehicleConfigs = {
     default: {
@@ -132,7 +111,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       front: -0.82,
       back: 0.82,
       width: 0.4,
-      wheelY: -0.1,
+      wheelY: -0.1, // Bánh xe nhỏ hơn/sâu hơn
       chassisY: -0.25,
       suspensionStiffness: 150,
       dampingRelaxation: 6.0,
@@ -148,7 +127,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       suspensionStiffness: 150, 
       dampingRelaxation: 12.0, 
       dampingCompression: 12.0,
-      mass: 800, // Xe Rolls Royce cực nặng để đầm chắc
+      mass: 800,
     },
     ship: {
       front: -0.55,
@@ -159,12 +138,44 @@ const Car = ({ folder, lastPos, lastRot }) => {
       suspensionStiffness: 150,
       dampingRelaxation: 6.0,
       dampingCompression: 6.0,
-      mass: 800, // Thuyền cũng cần nặng để ổn định
+      mass: 800,
     }
   };
 
   const config = vehicleConfigs[folder] || vehicleConfigs.default;
   const { front: fO, back: bO, width: oW, wheelY, chassisY } = config;
+
+  // Sử dụng useCompoundBody để tạo 2 lớp vật lý cho xe
+  const [chassisRef, chassisApi] = useCompoundBody(() => ({
+    mass: config.mass || 150, 
+    position: lastPos.current,
+    rotation: lastRot.current,
+    velocity: [0, 0, 0], 
+    angularVelocity: [0, 0, 0], 
+    allowSleep: true,
+    linearDamping: 0.2, 
+    angularDamping: 0.9, 
+    angularFactor: [0, 1, 0],
+    shapes: [
+      // Lớp 1 (Gầm xe): Hình hộp mỏng (0.2) nằm sát gầm, giữ chức năng tương tác với mặt đường (Trimesh) mà không bị cạ gầm.
+      { type: 'Box', position: [0, 0, 0], rotation: [0, 0, 0], args: [chassisWidth, 0.2, chassisDepth] },
+      // Lớp 2 (Mũi xe & Đuôi xe): Dùng HÌNH CẦU (Sphere) thay vì Hộp. Trong Cannon.js, Hình Cầu va chạm với Trimesh (tường) là chắc chắn nhất, tuyệt đối không bị xuyên tường dù chạy tốc độ cao!
+      { type: 'Sphere', position: [0, 0.3,  0.6], args: [0.4] }, // Mũi xe
+      { type: 'Sphere', position: [0, 0.3, -0.6], args: [0.4] }  // Đuôi xe
+    ]
+  }));
+
+  useEffect(() => {
+    const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
+    const unsubRot = chassisApi.rotation.subscribe(v => { lastRot.current = v; });
+    return () => { unsubPos(); unsubRot(); };
+  }, [chassisApi, lastPos, lastRot]);
+
+  // --- Hệ thống treo CÂN BẰNG ---
+  const wheelRadius = 0.25;
+  const wheelHeight = 0.25;
+
+  // Moved to the top to prevent TDZ issues
 
   const wheelInfos = useMemo(() => {
     // Nếu là Rolls Royce, sử dụng bộ tọa độ riêng biệt để dễ chỉnh sửa
@@ -422,7 +433,7 @@ const Ground = () => {
 };
 
 // Component phụ để tải và điều khiển cánh quạt từ file riêng
-const PropellerModel = ({ url, axis = 'y', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, offset = [0, 0, 0] }) => {
+const PropellerModel = ({ url, axis = 'y', position = [0, 0, 0], rotation = [0, 0, 0], scale = 1, offset = [0, 0, 0], lastPos }) => {
   const { nodes } = useGLTF(url);
   const rotRef = useRef();
   
@@ -446,9 +457,12 @@ const PropellerModel = ({ url, axis = 'y', position = [0, 0, 0], rotation = [0, 
   const speedRef = useRef(0);
 
   useFrame((_, delta) => {
+    // Máy bay được coi là đang bay nếu đang ấn phím Lên/Xuống HOẶC đang lơ lửng ở trên không (độ cao Y > 1.0)
+    const isFlying = keys.current.up || keys.current.down || (lastPos && lastPos.current && lastPos.current[1] > 1.0);
+    
     // Nội suy tốc độ để tạo hiệu ứng khởi động và dừng lại mượt mà
-    const targetSpeed = keys.current.up ? 50 : 0;
-    const lerpFactor = keys.current.up ? 0.05 : 0.005;
+    const targetSpeed = isFlying ? 50 : 0;
+    const lerpFactor = isFlying ? 0.05 : 0.005;
     speedRef.current = THREE.MathUtils.lerp(speedRef.current, targetSpeed, lerpFactor);
 
     if (rotRef.current && speedRef.current > 0.1) {
@@ -511,21 +525,31 @@ const Helicopter = ({ lastPos, lastRot }) => {
     };
   }, []);
 
-  const [ref, api] = useBox(() => ({
+  const [ref, api] = useCompoundBody(() => ({
     mass: 500,
     position: lastPos.current,
     rotation: lastRot.current,
-    args: [1, 1, 3],
     linearDamping: 0.8, 
     angularDamping: 0.95,
-    angularFactor: [0, 1, 0] // Khóa trục X và Z để máy bay luôn thăng bằng, không bị nghiêng
+    angularFactor: [0, 1, 0], // Khóa trục X và Z để máy bay luôn thăng bằng, không bị nghiêng
+    shapes: [
+      // Nâng Box lên 0.5 để mặt đáy (Y=0) khớp chính xác với bánh xe của model
+      { type: 'Box', position: [0, 0.5, 0], args: [1, 1, 3] },
+      // Nâng quả cầu lên 0.6 và thu nhỏ một chút để chúng làm cản trước/sau mà không chạm đất
+      { type: 'Sphere', position: [0, 0.6, -1.3], args: [0.5] },
+      { type: 'Sphere', position: [0, 0.6, 1.3], args: [0.5] }
+    ]
   }));
 
-  // Theo dõi tọa độ
+  const hovering = useRef(false);
+  const velocity = useRef([0, 0, 0]);
+
+  // Theo dõi tọa độ và vận tốc
   useEffect(() => {
     const unsubPos = api.position.subscribe(v => { lastPos.current = v; });
     const unsubRot = api.rotation.subscribe(v => { lastRot.current = v; });
-    return () => { unsubPos(); unsubRot(); };
+    const unsubVel = api.velocity.subscribe(v => { velocity.current = v; });
+    return () => { unsubPos(); unsubRot(); unsubVel(); };
   }, [api, lastPos, lastRot]);
 
   const { scene } = useGLTF('/models/car/helicopter/chassis.glb');
@@ -534,21 +558,39 @@ const Helicopter = ({ lastPos, lastRot }) => {
     const { forward, backward, left, right, up, down, yawLeft, yawRight } = controls.current;
     const dt = Math.min(delta, 0.05);
 
-    // Lực bay
-    const liftForce = 12000;
+    // Xử lý giữ nguyên độ cao (Hover)
+    if (!up && !down) {
+      if (!hovering.current) {
+        // Vừa nhả phím: Khóa cứng trục Y (tắt hẳn trọng lực) và dừng ngay lập tức
+        api.linearFactor.set(1, 0, 1);
+        api.velocity.set(velocity.current[0], 0, velocity.current[2]);
+        hovering.current = true;
+      }
+    } else {
+      if (hovering.current) {
+        // Vừa bấm phím: Mở khóa trục Y để bay lên/xuống bình thường
+        api.linearFactor.set(1, 1, 1);
+        hovering.current = false;
+      }
+      
+      const climbForce = 15000; // Lực nâng đủ lớn để thắng trọng lực và bay vút lên
+      if (up) api.applyLocalForce([0, climbForce, 0], [0, 0, 0]);
+      if (down) api.applyLocalForce([0, -5000, 0], [0, 0, 0]); // Trọng lực tự kéo xuống một phần, cộng thêm lực này để rơi nhanh hơn
+    }
+
+    // Lực di chuyển tới lùi
     const moveForce = 5000;
     const torque = 1000;
-
-    if (up) {
-      api.linearDamping.set(0.99);
-      api.applyLocalForce([0, liftForce, 0], [0, 0, 0]);
-    } else {
-      api.linearDamping.set(0.8);
-    }
-    if (down) api.applyLocalForce([0, -liftForce, 0], [0, 0, 0]);
     
     if (forward) api.applyLocalForce([0, 0, -moveForce], [0, 0, 0]);
     if (backward) api.applyLocalForce([0, 0, moveForce], [0, 0, 0]);
+
+    // Tự động phanh mượt mà khi nhả phím
+    if (!up && !down && !forward && !backward) {
+      api.linearDamping.set(0.95); // Phanh nhanh
+    } else {
+      api.linearDamping.set(0.8);  // Di chuyển bình thường
+    }
     
     // Q/E để xoay (Yaw)
     if (yawLeft) api.applyTorque([0, torque, 0]);
@@ -582,15 +624,15 @@ const Helicopter = ({ lastPos, lastRot }) => {
       <React.Suspense fallback={<mesh><boxGeometry args={[1, 1, 3]} /><meshStandardMaterial color="gray" /></mesh>}>
         <primitive object={scene} />
       </React.Suspense>
-      <Propeller url="/models/car/helicopter/rotor_main.glb" axis="y" position={[-0.009, 0.75, 0.01]} scale={0.01} />
-      <Propeller url="/models/car/helicopter/rotor_tail.glb" axis="y" position={[-0.13, 0.83, 1.59]} scale={0.002} rotation={[0, 0, Math.PI / 2]} offset={[0, 0, 0]} />
+      <Propeller lastPos={lastPos} url="/models/car/helicopter/rotor_main.glb" axis="y" position={[-0.009, 0.75, 0.01]} scale={0.01} />
+      <Propeller lastPos={lastPos} url="/models/car/helicopter/rotor_tail.glb" axis="y" position={[-0.13, 0.83, 1.59]} scale={0.002} rotation={[0, 0, Math.PI / 2]} offset={[0, 0, 0]} />
     </group>
   );
 };
 
 // Ship component đã được xoá — ship giờ dùng Car với folder='ship' và bánh xe ẩn
 
-// ─── MAP OBJECT ──────────────────────────────────────────────────────────────
+// ─── MAP OBJECT (dùng useBox đơn giản) ───────────────────────────────────────
 const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation = [0, 0, 0], hasPhysics = true }) => {
   const { scene } = useGLTF(`/models/map/${filename}`);
   const [ref] = useBox(() => ({ 
@@ -606,6 +648,79 @@ const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation =
     return <primitive object={scene.clone()} position={position} scale={scale} rotation={rotation} />;
   }
   return <primitive ref={ref} object={scene.clone()} scale={scale} />;
+};
+
+// ─── MAP WITH COLLISION (Trimesh 100% ôm sát bề mặt) ──────
+const MapCollision = ({ collisionFile, position = [0, 0, 0], rotation = [0, 0, 0], scale = 1 }) => {
+  const { scene } = useGLTF(`/models/map/${collisionFile}`);
+  
+  const meshes = useMemo(() => {
+    const list = [];
+    const cloned = scene.clone();
+    cloned.updateWorldMatrix(true, true);
+    
+    cloned.traverse(node => {
+      if (node.isMesh && node.geometry) {
+        const geom = node.geometry.clone();
+        geom.applyMatrix4(node.matrixWorld);
+        
+        if (scale !== 1) {
+          const scaleMat = new THREE.Matrix4().makeScale(scale, scale, scale);
+          geom.applyMatrix4(scaleMat);
+        }
+        
+        const posArr = geom.attributes.position.array;
+        if (!posArr || posArr.length === 0) return;
+        
+        let indices;
+        if (geom.index) {
+          indices = new Uint32Array(geom.index.array);
+        } else {
+          indices = new Uint32Array(posArr.length / 3);
+          for (let i = 0; i < indices.length; i++) indices[i] = i;
+        }
+        
+        const vertices = new Float32Array(posArr);
+        
+        if (vertices.length > 0 && indices.length > 0) {
+          list.push({ vertices, indices });
+        }
+      }
+    });
+    return list;
+  }, [scene, scale]);
+
+  return (
+    <>
+      {meshes.map((m, i) => (
+        <TrimeshCollider key={`tri-${i}`} vertices={m.vertices} indices={m.indices} position={position} rotation={rotation} />
+      ))}
+    </>
+  );
+};
+
+const TrimeshCollider = ({ vertices, indices, position, rotation }) => {
+  const [ref] = useTrimesh(() => ({
+    mass: 0,
+    type: 'Static',
+    position,
+    rotation,
+    args: [vertices, indices],
+  }));
+  return <mesh ref={ref} />;
+};
+
+const MapWithPhysics = ({ mapFile = 'map.glb', collisionFile = 'map_collision.glb', position = [0, 0, 0], scale = 1, rotation = [0, 0, 0] }) => {
+  const { scene } = useGLTF(`/models/map/${mapFile}`);
+  
+  return (
+    <>
+      {/* Hiển thị map đẹp */}
+      <primitive object={scene.clone()} position={position} scale={scale} rotation={rotation} />
+      {/* Hitbox từ file collision */}
+      <MapCollision collisionFile={collisionFile} position={position} rotation={rotation} scale={scale} />
+    </>
+  );
 };
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
@@ -631,7 +746,7 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
         />
       )}
       <Ground />
-      <MapObject filename="house.glb" position={[10, 0, -20]} scale={1} args={[8, 10, 8]} hasPhysics={false} />
+      <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
     </>
   );
 
@@ -641,6 +756,48 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
     </Physics>
   );
 }
+
+const simulateKey = (code, isDown) => {
+  const event = new KeyboardEvent(isDown ? 'keydown' : 'keyup', { code, bubbles: true });
+  window.dispatchEvent(event);
+};
+
+const MobileControls = ({ vehicleFolder }) => {
+  useEffect(() => {
+    const preventContext = (e) => e.preventDefault();
+    document.addEventListener('contextmenu', preventContext);
+    return () => document.removeEventListener('contextmenu', preventContext);
+  }, []);
+
+  const handlePointerDown = (code) => (e) => {
+    e.preventDefault();
+    simulateKey(code, true);
+  };
+  
+  const handlePointerUp = (code) => (e) => {
+    e.preventDefault();
+    simulateKey(code, false);
+  };
+
+  return (
+    <div className="mobile-controls">
+      <div className="mc-left">
+        <button className="mc-btn" onPointerDown={handlePointerDown('KeyA')} onPointerUp={handlePointerUp('KeyA')} onPointerLeave={handlePointerUp('KeyA')}>◀</button>
+        <button className="mc-btn" onPointerDown={handlePointerDown('KeyD')} onPointerUp={handlePointerUp('KeyD')} onPointerLeave={handlePointerUp('KeyD')}>▶</button>
+      </div>
+
+      <div className="mc-top-right">
+        <button className="mc-btn action-btn" onPointerDown={handlePointerDown('Space')} onPointerUp={handlePointerUp('Space')} onPointerLeave={handlePointerUp('Space')}>{vehicleFolder === 'helicopter' ? 'Lên' : 'Phanh'}</button>
+        <button className="mc-btn action-btn" onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{vehicleFolder === 'helicopter' ? 'Xuống' : 'Nitro'}</button>
+      </div>
+
+      <div className="mc-right">
+        <button className="mc-btn gas-btn" onPointerDown={handlePointerDown('KeyW')} onPointerUp={handlePointerUp('KeyW')} onPointerLeave={handlePointerUp('KeyW')}>▲</button>
+        <button className="mc-btn brake-btn" onPointerDown={handlePointerDown('KeyS')} onPointerUp={handlePointerUp('KeyS')} onPointerLeave={handlePointerUp('KeyS')}>▼</button>
+      </div>
+    </div>
+  );
+};
 
 export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
@@ -708,6 +865,46 @@ export default function App() {
           gap: 15px;
           z-index: 100;
         }
+
+        @media (min-width: 769px) {
+          .mobile-controls { display: none !important; }
+        }
+        .mobile-controls {
+          position: absolute;
+          top: 0; left: 0; right: 0; bottom: 0;
+          pointer-events: none;
+          z-index: 50;
+        }
+        .mc-btn {
+          pointer-events: auto;
+          background: rgba(255, 255, 255, 0.2);
+          backdrop-filter: blur(10px);
+          border: 1px solid rgba(255, 255, 255, 0.4);
+          color: white;
+          border-radius: 50%;
+          font-size: 24px;
+          font-weight: bold;
+          display: flex;
+          align-items: center;
+          justify-content: center;
+          user-select: none;
+          -webkit-user-select: none;
+          touch-action: none;
+          cursor: pointer;
+        }
+        .mc-btn:active { background: rgba(255, 255, 255, 0.5); transform: scale(0.95); }
+        .mc-left { position: absolute; bottom: 30px; left: 20px; display: flex; gap: 15px; }
+        .mc-left .mc-btn { width: 60px; height: 60px; }
+        .mc-left .small-btn { width: 40px; height: 40px; font-size: 16px; margin-top: 10px; }
+        
+        .mc-right { position: absolute; bottom: 30px; right: 20px; display: flex; flex-direction: column; gap: 15px; }
+        .mc-right .mc-btn { width: 60px; height: 60px; }
+        .mc-right .gas-btn { border-radius: 15px; background: rgba(76, 175, 80, 0.4); }
+        .mc-right .brake-btn { border-radius: 15px; background: rgba(244, 67, 54, 0.4); }
+
+        .mc-top-right { position: absolute; top: 50%; right: 20px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; }
+        .mc-top-right .action-btn { width: 60px; height: 60px; border-radius: 50%; font-size: 14px; background: rgba(33, 150, 243, 0.4); }
+
 
         .user-profile-hud {
           background: rgba(0, 0, 0, 0.7);
@@ -1100,7 +1297,7 @@ export default function App() {
         <div className="heli-controls">
           <h3>🚁 ĐIỀU KHIỂN</h3>
           <p><b>W / S:</b> Tiến / Lùi</p>
-          <p><b>Q / E:</b> Xoay thân (Yaw)</p>
+          <p><b>A / D:</b> Xoay thân (Yaw)</p>
           <p><b>Space:</b> Bay lên & Phanh</p>
           <p><b>Shift:</b> Bay xuống</p>
         </div>
@@ -1127,16 +1324,13 @@ export default function App() {
       `}</style>
 
       <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: '#f0905a' }}>
-        {/* Fog để nền đất và bầu trời hòa vào nhau kiểu G10 */}
         <fog attach="fog" args={['#FF7A2F', 40, 200]} />
-        
-        {/* Ánh sáng ấm mềm — kiểu G10 */}
         <ambientLight intensity={1.2} color="#fff0e0" />
         <directionalLight position={[10, 20, 10]} intensity={1.5} color="#ffe0c0" />
         <directionalLight position={[-10, 10, -10]} intensity={0.5} color="#ffcc88" />
-        
         <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
       </Canvas>
+      <MobileControls vehicleFolder={vehicleFolder} />
     </div>
   );
 }
