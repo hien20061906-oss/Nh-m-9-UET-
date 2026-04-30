@@ -866,7 +866,8 @@ export default function App() {
           z-index: 100;
         }
 
-        @media (min-width: 769px) {
+        /* Ẩn nút ảo trên máy tính (nơi có chuột thực sự), hiện trên mọi màn hình cảm ứng kể cả lúc xoay ngang */
+        @media (hover: hover) and (pointer: fine) {
           .mobile-controls { display: none !important; }
         }
         .mobile-controls {
@@ -1106,27 +1107,36 @@ export default function App() {
           font-weight: bold;
         }
 
-        @media (max-width: 768px) {
-          .menu-card { padding: 20px; max-height: 85vh; overflow-y: auto; }
-          .menu-card h2 { font-size: 20px; margin-bottom: 15px; }
-          .vehicle-options { grid-template-columns: repeat(2, 1fr); gap: 10px; margin-bottom: 15px; }
-          .vehicle-option { padding: 15px 10px; border-radius: 16px; }
-          .vehicle-icon { font-size: 30px; margin-bottom: 5px; }
-          .vehicle-option h3 { font-size: 13px; }
-          .price-tag { font-size: 12px; margin-top: 5px; }
-          .buy-btn, .save-btn { padding: 10px 15px; font-size: 14px; border-radius: 12px; margin-top: 10px; }
-          .close-btn { width: 100%; padding: 12px 20px; font-size: 16px; }
+        /* Tối ưu hóa UI cho điện thoại màn hình dọc và màn hình xoay ngang (Landscape) */
+        @media (max-width: 900px), (max-height: 600px) {
+          .menu-card { padding: 15px; max-height: 85vh; overflow-y: auto; }
+          .menu-card h2 { font-size: 18px; margin-bottom: 10px; }
+          /* Dùng auto-fit để tự động giãn cột: dọc thì 2 cột, ngang thì 3-4 cột tùy chiều rộng */
+          .vehicle-options { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 15px; }
+          .vehicle-option { padding: 10px; border-radius: 12px; }
+          .vehicle-icon { font-size: 26px; margin-bottom: 5px; }
+          .vehicle-option h3 { font-size: 12px; }
+          .price-tag { font-size: 11px; margin-top: 5px; }
+          .buy-btn, .save-btn { padding: 8px 10px; font-size: 12px; border-radius: 10px; margin-top: 8px; }
+          .close-btn { width: 100%; padding: 10px 15px; font-size: 14px; }
           
-          .avatar-selector { grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 15px; }
-          .avatar-item { font-size: 24px; padding: 5px; }
-          .avatar-preview-large { width: 80px; height: 80px; font-size: 40px; margin-bottom: 15px; }
-          .change-photo-btn { font-size: 11px; padding: 6px 12px; margin-bottom: 15px; }
+          .avatar-selector { grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 10px; }
+          .avatar-item { font-size: 20px; padding: 4px; }
+          .avatar-preview-large { width: 60px; height: 60px; font-size: 30px; margin-bottom: 10px; }
+          .change-photo-btn { font-size: 10px; padding: 5px 10px; margin-bottom: 10px; }
           
-          .top-ui { flex-wrap: wrap; gap: 8px; top: 10px; left: 10px; right: 10px; }
-          .user-profile-hud { padding: 5px 15px 5px 5px; }
-          .hud-avatar { width: 32px; height: 32px; font-size: 18px; }
-          .hud-name { font-size: 12px; }
-          .menu-button, .shop-button { padding: 8px 12px; font-size: 12px; border-radius: 8px; }
+          .top-ui { flex-wrap: wrap; gap: 6px; top: 10px; left: 10px; right: 10px; }
+          .user-profile-hud { padding: 4px 12px 4px 4px; }
+          .hud-avatar { width: 28px; height: 28px; font-size: 14px; }
+          .hud-name { font-size: 11px; }
+          .hud-gold { font-size: 10px; }
+          .menu-button, .shop-button { padding: 6px 10px; font-size: 11px; border-radius: 6px; }
+          
+          /* Giảm kích thước nút bấm ảo khi màn hình ngang bị lùn */
+          .mc-btn { width: 50px; height: 50px; font-size: 18px; }
+          .mc-left .mc-btn, .mc-right .mc-btn { width: 50px; height: 50px; }
+          .mc-top-right .action-btn { width: 50px; height: 50px; font-size: 12px; }
+          .mc-left, .mc-right { bottom: 15px; }
         }
       `}</style>
 
