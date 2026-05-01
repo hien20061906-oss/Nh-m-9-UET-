@@ -11,7 +11,7 @@ function usePlayerControls() {
   const keys = useRef({ 
     forward: false, backward: false, left: false, right: false, 
     brake: false, reset: false, boost: false, change: false,
-    up: false, down: false, yawLeft: false, yawRight: false 
+    up: false, down: false, yawLeft: false, yawRight: false, honk: false 
   });
   useEffect(() => {
     const down = (e) => {
@@ -25,6 +25,7 @@ function usePlayerControls() {
       if (e.code === 'KeyR')   keys.current.reset = true;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { keys.current.boost = true; keys.current.down = true; }
       if (e.code === 'KeyC')   keys.current.change = true;
+      if (e.code === 'KeyH')   keys.current.honk = true;
     };
     const up = (e) => {
       if (e.code === 'KeyW' || e.code === 'ArrowUp')    keys.current.forward  = false;
@@ -37,6 +38,7 @@ function usePlayerControls() {
       if (e.code === 'KeyR')   keys.current.reset = false;
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { keys.current.boost = false; keys.current.down = false; }
       if (e.code === 'KeyC')   keys.current.change = false;
+      if (e.code === 'KeyH')   keys.current.honk = false;
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -145,6 +147,14 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   const config = vehicleConfigs[folder] || vehicleConfigs.default;
   const { front: fO, back: bO, width: oW, wheelY, chassisY } = config;
+
+  // Âm thanh còi xe
+  const honkSound = useMemo(() => {
+    const audio = new window.Audio('/sounds/honk.mp3');
+    audio.volume = 0.5;
+    return audio;
+  }, []);
+  const isHonking = useRef(false);
 
   // Sử dụng useCompoundBody để tạo 2 lớp vật lý cho xe
   const [chassisRef, chassisApi] = useCompoundBody(() => ({
@@ -264,8 +274,17 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   // ─── MAIN LOOP ───────────────────────────────────────────────────────────
   useFrame((_, delta) => {
-    const { forward, backward, left, right, brake, reset, boost, change } = controls.current;
+    const { forward, backward, left, right, brake, reset, boost, change, honk } = controls.current;
     
+    // Xử lý còi xe (chỉ dành cho ô tô, không dành cho Tàu Thủy)
+    if (honk && folder !== 'ship' && !isHonking.current) {
+      honkSound.currentTime = 0;
+      honkSound.play().catch(e => console.log('Audio play failed:', e));
+      isHonking.current = true;
+    } else if (!honk) {
+      isHonking.current = false;
+    }
+
     const dt = Math.min(delta, 0.05); // clamp delta để tránh spike lag
 
     // Reset xe
@@ -788,6 +807,9 @@ const MobileControls = ({ vehicleFolder }) => {
       </div>
 
       <div className="mc-top-right">
+        {vehicleFolder !== 'helicopter' && vehicleFolder !== 'ship' && (
+          <button className="mc-btn action-btn" style={{ fontSize: '20px' }} onPointerDown={handlePointerDown('KeyH')} onPointerUp={handlePointerUp('KeyH')} onPointerLeave={handlePointerUp('KeyH')}>📢</button>
+        )}
         <button className="mc-btn action-btn" onPointerDown={handlePointerDown('Space')} onPointerUp={handlePointerUp('Space')} onPointerLeave={handlePointerUp('Space')}>{vehicleFolder === 'helicopter' ? 'Lên' : 'Phanh'}</button>
         <button className="mc-btn action-btn" onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{vehicleFolder === 'helicopter' ? 'Xuống' : 'Nitro'}</button>
       </div>
