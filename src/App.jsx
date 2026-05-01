@@ -755,12 +755,11 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const contents = (
     <>
       {vehicleFolder === 'helicopter' ? (
-        <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} />
+        <Helicopter lastPos={lastPos} lastRot={lastRot} />
       ) : vehicleFolder === 'ship' ? (
-        <Car key="ship" folder="ship" lastPos={lastPos} lastRot={lastRot} />
+        <Car folder="ship" lastPos={lastPos} lastRot={lastRot} />
       ) : (
         <Car 
-          key={vehicleFolder} 
           folder={vehicleFolder} 
           lastPos={lastPos} 
           lastRot={lastRot}
