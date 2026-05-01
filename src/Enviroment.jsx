@@ -15,11 +15,11 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 2000,
+    rainSpread: 1500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 2000,
+    snowSpread: 1500,
     skyTop: '#87CEEB',
     skyBottom: '#f0905a',
   },
@@ -32,13 +32,13 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 50000,
+    rainCount: 100000,
     rainLength: 0.8,
-    rainSpread: 2000,
+    rainSpread: 1500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 2000,
+    snowSpread: 1500,
     skyTop: '#4a5a6a',
     skyBottom: '#6a7a8a',
   },
@@ -53,11 +53,11 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 2000,
-    snowCount: 50000,
+    rainSpread: 1500,
+    snowCount: 100000,
     snowSize: 0.22,
     snowOpacity: 0.9,
-    snowSpread: 2000,
+    snowSpread: 1500,
     skyTop: '#b0c8e8',
     skyBottom: '#dce8f5',
   },
@@ -72,11 +72,11 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 2000,
+    rainSpread: 1500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 2000,
+    snowSpread: 1500,
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
@@ -89,141 +89,150 @@ function lerpColor(a, b, t) {
   return '#' + ca.lerp(cb, t).getHexString();
 }
 
-// ─── RAIN PARTICLES (LineSegments – hỗ trợ điều chỉnh độ dài) ────────────────
-function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) {
+// ─── RAIN PARTICLES (Shader-based for extreme density) ──────────────────────
+function Rain({ count, color = '#aaddff', rainLength = 0.8, rainSpread = 1500 }) {
   const mesh = useRef();
-  const positions = useRef(null);
-  const velocities = useRef(null);
+  
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uColor: { value: new THREE.Color(color) },
+    uLength: { value: rainLength },
+    uSpread: { value: rainSpread },
+    uHeight: { value: 60.0 }
+  }), [color, rainLength, rainSpread]);
 
-  useEffect(() => {
-    if (count === 0) return;
-    // Mỗi hạt mưa = 1 đoạn thẳng → 2 đỉnh → 6 số float
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(count * 6);
-    const vel = new Float32Array(count);
+    const speed = new Float32Array(count * 2);
+    
     for (let i = 0; i < count; i++) {
       const x = (Math.random() - 0.5) * rainSpread;
-      const y = Math.random() * 40 + 5;
+      const y = Math.random() * 60;
       const z = (Math.random() - 0.5) * rainSpread;
-      // Đỉnh trên
-      pos[i * 6 + 0] = x;
-      pos[i * 6 + 1] = y;
-      pos[i * 6 + 2] = z;
-      // Đỉnh dưới (cách nhau rainLength)
-      pos[i * 6 + 3] = x;
-      pos[i * 6 + 4] = y - rainLength;
-      pos[i * 6 + 5] = z;
-      vel[i] = 15 + Math.random() * 10;
+      const s = 25 + Math.random() * 15;
+      
+      // Top vertex
+      pos[i * 6 + 0] = x; pos[i * 6 + 1] = y; pos[i * 6 + 2] = z;
+      // Bottom vertex
+      pos[i * 6 + 3] = x; pos[i * 6 + 4] = y - rainLength; pos[i * 6 + 5] = z;
+      
+      speed[i * 2] = s; speed[i * 2 + 1] = s;
     }
-    positions.current = pos;
-    velocities.current = vel;
-    if (mesh.current) {
-      mesh.current.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    }
-  }, [count, rainLength, rainSpread]);
-
-  useFrame((state, delta) => {
-    if (!mesh.current || !positions.current || count === 0) return;
-    const pos = positions.current;
-    const vel = velocities.current;
     
-    // Đã xoá logic đi theo camera để mưa trải dài cố định trên toàn map
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aSpeed', new THREE.BufferAttribute(speed, 1));
+    return geo;
+  }, [count, rainSpread, rainLength]);
 
-    for (let i = 0; i < count; i++) {
-      pos[i * 6 + 1] -= vel[i] * delta;
-      pos[i * 6 + 4] -= vel[i] * delta;
-      if (pos[i * 6 + 1] < 0) {
-        const x = (Math.random() - 0.5) * rainSpread;
-        const y = 40 + Math.random() * 10;
-        const z = (Math.random() - 0.5) * rainSpread;
-        pos[i * 6 + 0] = x;  pos[i * 6 + 1] = y;              pos[i * 6 + 2] = z;
-        pos[i * 6 + 3] = x;  pos[i * 6 + 4] = y - rainLength;  pos[i * 6 + 5] = z;
-      }
+  useFrame((state) => {
+    if (mesh.current) {
+      mesh.current.material.uniforms.uTime.value = state.clock.getElapsedTime();
     }
-    mesh.current.geometry.attributes.position.needsUpdate = true;
   });
 
   if (count === 0) return null;
+
   return (
-    <lineSegments ref={mesh}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={count * 2}
-          array={new Float32Array(count * 6)}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <lineBasicMaterial
-        color={color}
+    <lineSegments ref={mesh} frustumCulled={false}>
+      <primitive object={geometry} attach="geometry" />
+      <shaderMaterial
         transparent
-        opacity={0.8}
         depthWrite={false}
+        uniforms={uniforms}
+        vertexShader={`
+          uniform float uTime;
+          uniform float uSpread;
+          uniform float uHeight;
+          attribute float aSpeed;
+          void main() {
+            vec3 pos = position;
+            // Rơi xuống và lặp lại (wrap around)
+            pos.y = mod(pos.y - uTime * aSpeed, uHeight);
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `}
+        fragmentShader={`
+          uniform vec3 uColor;
+          void main() {
+            gl_FragColor = vec4(uColor, 0.8);
+          }
+        `}
       />
     </lineSegments>
   );
 }
 
-// ─── SNOW PARTICLES (hỗ trợ điều chỉnh kích thước & độ dày) ─────────────────
-function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 120 }) {
+// ─── SNOW PARTICLES (Shader-based for extreme density) ──────────────────────
+function Snow({ count, snowSize = 0.2, snowOpacity = 0.9, snowSpread = 1500 }) {
   const mesh = useRef();
-  const positions = useRef(null);
-  const drifts = useRef(null);
+  
+  const uniforms = useMemo(() => ({
+    uTime: { value: 0 },
+    uSize: { value: snowSize },
+    uOpacity: { value: snowOpacity },
+    uHeight: { value: 60.0 }
+  }), [snowSize, snowOpacity]);
 
-  useEffect(() => {
-    if (count === 0) return;
+  const geometry = useMemo(() => {
+    const geo = new THREE.BufferGeometry();
     const pos = new Float32Array(count * 3);
+    const speed = new Float32Array(count);
     const drift = new Float32Array(count);
+    
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
-      pos[i * 3 + 1] = Math.random() * 40;
+      pos[i * 3 + 1] = Math.random() * 60;
       pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
-      drift[i] = (Math.random() - 0.5) * 0.5;
+      speed[i] = 1.5 + Math.random() * 1.5;
+      drift[i] = (Math.random() - 0.5) * 2.0;
     }
-    positions.current = pos;
-    drifts.current = drift;
-    if (mesh.current) {
-      mesh.current.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    }
+    
+    geo.setAttribute('position', new THREE.BufferAttribute(pos, 3));
+    geo.setAttribute('aSpeed', new THREE.BufferAttribute(speed, 1));
+    geo.setAttribute('aDrift', new THREE.BufferAttribute(drift, 1));
+    return geo;
   }, [count, snowSpread]);
 
-  useFrame((state, delta) => {
-    if (!mesh.current || !positions.current || count === 0) return;
-    const pos = positions.current;
-    const drift = drifts.current;
-    const t = Date.now() * 0.001;
-
-    // Đã xoá logic đi theo camera để tuyết trải dài cố định trên toàn map
-
-    for (let i = 0; i < count; i++) {
-      pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
-      pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
-      if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
-        pos[i * 3 + 1] = 40;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
-      }
+  useFrame((state) => {
+    if (mesh.current) {
+      mesh.current.material.uniforms.uTime.value = state.clock.getElapsedTime();
     }
-    mesh.current.geometry.attributes.position.needsUpdate = true;
   });
 
   if (count === 0) return null;
+
   return (
-    <points ref={mesh}>
-      <bufferGeometry>
-        <bufferAttribute
-          attach="attributes-position"
-          count={count}
-          array={new Float32Array(count * 3)}
-          itemSize={3}
-        />
-      </bufferGeometry>
-      <pointsMaterial
-        color="#ffffff"
-        size={snowSize}
+    <points ref={mesh} frustumCulled={false}>
+      <primitive object={geometry} attach="geometry" />
+      <shaderMaterial
         transparent
-        opacity={snowOpacity}
         depthWrite={false}
-        sizeAttenuation
+        uniforms={uniforms}
+        vertexShader={`
+          uniform float uTime;
+          uniform float uHeight;
+          uniform float uSize;
+          attribute float aSpeed;
+          attribute float aDrift;
+          void main() {
+            vec3 pos = position;
+            pos.y = mod(pos.y - uTime * aSpeed, uHeight);
+            pos.x += sin(uTime + pos.y) * aDrift;
+            vec4 mvPosition = modelViewMatrix * vec4(pos, 1.0);
+            gl_PointSize = uSize * (300.0 / -mvPosition.z);
+            gl_Position = projectionMatrix * mvPosition;
+          }
+        `}
+        fragmentShader={`
+          uniform float uOpacity;
+          void main() {
+            float dist = distance(gl_PointCoord, vec2(0.5));
+            if (dist > 0.5) discard;
+            gl_FragColor = vec4(1.0, 1.0, 1.0, uOpacity);
+          }
+        `}
       />
     </points>
   );
@@ -258,8 +267,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 2000} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 2000} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={1500} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={1500} />
     </>
   );
 }
@@ -433,7 +442,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Mật độ hạt mưa"
               value={manual.rainCount}
-              min={0} max={150000} step={1000}
+              min={0} max={500000} step={5000}
               onChange={v => handleSlider('rainCount', Math.round(v))}
               color="#aaddff"
             />
@@ -447,17 +456,9 @@ export function WeatherPanel({ weather, setWeather }) {
             />
 
             <SliderRow
-              label="📏 Phạm vi mưa (Toàn Map)"
-              value={manual.rainSpread}
-              min={100} max={3000} step={100}
-              onChange={v => handleSlider('rainSpread', Math.round(v))}
-              color="#66bbff"
-            />
-
-            <SliderRow
               label="❄️ Mật độ hạt tuyết"
               value={manual.snowCount}
-              min={0} max={150000} step={1000}
+              min={0} max={500000} step={5000}
               onChange={v => handleSlider('snowCount', Math.round(v))}
               color="#ddeeff"
             />
@@ -475,14 +476,6 @@ export function WeatherPanel({ weather, setWeather }) {
               value={manual.snowOpacity}
               min={0.1} max={1.0} step={0.05}
               onChange={v => handleSlider('snowOpacity', v)}
-              color="#eef5ff"
-            />
-
-            <SliderRow
-              label="🌨️ Phạm vi tuyết (Toàn Map)"
-              value={manual.snowSpread}
-              min={100} max={3000} step={100}
-              onChange={v => handleSlider('snowSpread', Math.round(v))}
               color="#eef5ff"
             />
 
