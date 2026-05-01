@@ -15,7 +15,7 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 120,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -31,9 +31,9 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 1500,
+    rainCount: 3000,
     rainLength: 0.8,
-    rainSpread: 120,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -51,8 +51,8 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 120,
-    snowCount: 1200,
+    rainSpread: 200,
+    snowCount: 2500,
     snowSize: 0.22,
     snowOpacity: 0.9,
     skyTop: '#b0c8e8',
@@ -69,7 +69,7 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 120,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -117,19 +117,33 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
     }
   }, [count, rainLength, rainSpread]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const vel = velocities.current;
+    const camPos = state.camera.position;
+    const halfSpread = rainSpread / 2;
+
     for (let i = 0; i < count; i++) {
       pos[i * 6 + 1] -= vel[i] * delta;
       pos[i * 6 + 4] -= vel[i] * delta;
+      
+      // Infinite wrap X Z around camera
+      let dx = pos[i * 6 + 0] - camPos.x;
+      let dz = pos[i * 6 + 2] - camPos.z;
+      if (dx > halfSpread) { pos[i * 6 + 0] -= rainSpread; pos[i * 6 + 3] -= rainSpread; }
+      else if (dx < -halfSpread) { pos[i * 6 + 0] += rainSpread; pos[i * 6 + 3] += rainSpread; }
+      
+      if (dz > halfSpread) { pos[i * 6 + 2] -= rainSpread; pos[i * 6 + 5] -= rainSpread; }
+      else if (dz < -halfSpread) { pos[i * 6 + 2] += rainSpread; pos[i * 6 + 5] += rainSpread; }
+
       if (pos[i * 6 + 1] < 0) {
-        const x = (Math.random() - 0.5) * rainSpread;
-        const y = 30 + Math.random() * 10;
-        const z = (Math.random() - 0.5) * rainSpread;
-        pos[i * 6 + 0] = x;  pos[i * 6 + 1] = y;              pos[i * 6 + 2] = z;
-        pos[i * 6 + 3] = x;  pos[i * 6 + 4] = y - rainLength;  pos[i * 6 + 5] = z;
+        pos[i * 6 + 1] = 30 + Math.random() * 10;
+        pos[i * 6 + 4] = pos[i * 6 + 1] - rainLength;
+        const nx = camPos.x + (Math.random() - 0.5) * rainSpread;
+        const nz = camPos.z + (Math.random() - 0.5) * rainSpread;
+        pos[i * 6 + 0] = nx; pos[i * 6 + 2] = nz;
+        pos[i * 6 + 3] = nx; pos[i * 6 + 5] = nz;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
@@ -167,9 +181,9 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85 }) {
     const pos = new Float32Array(count * 3);
     const drift = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      pos[i * 3 + 0] = (Math.random() - 0.5) * 120;
+      pos[i * 3 + 0] = (Math.random() - 0.5) * 200;
       pos[i * 3 + 1] = Math.random() * 35;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 120;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * 200;
       drift[i] = (Math.random() - 0.5) * 0.5;
     }
     positions.current = pos;
@@ -179,18 +193,32 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85 }) {
     }
   }, [count]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const drift = drifts.current;
     const t = Date.now() * 0.001;
+    const camPos = state.camera.position;
+    const snowSpread = 200;
+    const halfSpread = snowSpread / 2;
+
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
       pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
+      
+      // Infinite wrap X Z around camera
+      let dx = pos[i * 3 + 0] - camPos.x;
+      let dz = pos[i * 3 + 2] - camPos.z;
+      if (dx > halfSpread) pos[i * 3 + 0] -= snowSpread;
+      else if (dx < -halfSpread) pos[i * 3 + 0] += snowSpread;
+      
+      if (dz > halfSpread) pos[i * 3 + 2] -= snowSpread;
+      else if (dz < -halfSpread) pos[i * 3 + 2] += snowSpread;
+
       if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 0] = (Math.random() - 0.5) * 120;
+        pos[i * 3 + 0] = camPos.x + (Math.random() - 0.5) * snowSpread;
         pos[i * 3 + 1] = 35;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * 120;
+        pos[i * 3 + 2] = camPos.z + (Math.random() - 0.5) * snowSpread;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
