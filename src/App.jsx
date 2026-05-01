@@ -409,17 +409,23 @@ const Car = ({ folder, lastPos, lastRot, controls, cameraMode }) => {
     
     // --- Camera Logic ---
     if (cameraMode === 'firstPerson') {
-      // Góc nhìn "mắt người": Bám sát 100% hướng xoay, độ nghiêng (roll/pitch) của xe
-      const chassisQuat = chassisRef.current.quaternion;
-      const roofOffset = new THREE.Vector3(0, 0.6, -0.4).applyQuaternion(chassisQuat);
-      camera.position.copy(currentPosition).add(roofOffset);
-      
-      // Cho phép camera nghiêng theo xe (Roll)
-      const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(chassisQuat);
-      camera.up.copy(upVector);
-      
-      const lookAtOffset = new THREE.Vector3(0, 0.5, -5).applyQuaternion(chassisQuat);
-      camera.lookAt(currentPosition.clone().add(lookAtOffset));
+      // Kiểm tra an toàn để tránh lỗi khi đổi xe
+      if (chassisRef.current) {
+        // 1. Vị trí ghế lái (hơi lệch trái và cao lên)
+        const driverSeatOffset = new THREE.Vector3(-0.3, 0.4, 0.1);
+        const worldDriverPos = currentPosition.clone().add(driverSeatOffset.applyQuaternion(chassisRef.current.quaternion));
+        
+        // 2. Làm mượt vị trí (lerp)
+        camera.position.lerp(worldDriverPos, 0.5);
+        
+        // 3. Làm mượt hướng xoay (slerp)
+        const targetQuat = chassisRef.current.quaternion.clone();
+        camera.quaternion.slerp(targetQuat, 0.5);
+        
+        // Cập nhật Vector Up để camera nghiêng theo xe
+        const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(targetQuat);
+        camera.up.copy(upVector);
+      }
     } else {
       // Góc nhìn thứ 3 truyền thống (luôn giữ camera thăng bằng)
       camera.up.set(0, 1, 0);
@@ -435,7 +441,9 @@ const Car = ({ folder, lastPos, lastRot, controls, cameraMode }) => {
       const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
       idealOffset.applyEuler(new THREE.Euler(0, smoothRot.current, 0));
       
-      camera.position.copy(currentPosition).add(idealOffset);
+      const targetPos = currentPosition.clone().add(idealOffset);
+      camera.position.lerp(targetPos, 0.2); // Làm mượt vị trí cam 3rd person
+      
       const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
       camera.lookAt(lookAtPos);
     }
@@ -640,15 +648,17 @@ const Helicopter = ({ lastPos, lastRot, controls, cameraMode }) => {
 
     if (cameraMode === 'firstPerson') {
       // Góc nhìn trong buồng lái (Nghiêng theo máy bay)
-      const chassisQuat = ref.current.quaternion;
-      const cockpitOffset = new THREE.Vector3(0, 0.4, -0.8).applyQuaternion(chassisQuat);
-      state.camera.position.copy(currentPosition).add(cockpitOffset);
-      
-      const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(chassisQuat);
-      state.camera.up.copy(upVector);
-      
-      const lookAtOffset = new THREE.Vector3(0, 0.2, -5).applyQuaternion(chassisQuat);
-      state.camera.lookAt(currentPosition.clone().add(lookAtOffset));
+      if (ref.current) {
+        const cockpitOffset = new THREE.Vector3(0, 0.4, -0.8);
+        const worldCockpitPos = currentPosition.clone().add(cockpitOffset.applyQuaternion(ref.current.quaternion));
+        
+        state.camera.position.lerp(worldCockpitPos, 0.5);
+        const targetQuat = ref.current.quaternion.clone();
+        state.camera.quaternion.slerp(targetQuat, 0.5);
+        
+        const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(targetQuat);
+        state.camera.up.copy(upVector);
+      }
     } else {
       // Góc nhìn thứ 3 (Thăng bằng)
       state.camera.up.set(0, 1, 0);
@@ -663,7 +673,9 @@ const Helicopter = ({ lastPos, lastRot, controls, cameraMode }) => {
       
       const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
       idealOffset.applyEuler(new THREE.Euler(0, rawRot, 0));
-      state.camera.position.copy(currentPosition).add(idealOffset);
+      
+      const targetPos = currentPosition.clone().add(idealOffset);
+      state.camera.position.lerp(targetPos, 0.2);
       
       const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, rawRot, 0)));
       state.camera.lookAt(lookAtPos);
