@@ -11,7 +11,7 @@ function usePlayerControls() {
   const keys = useRef({ 
     forward: false, backward: false, left: false, right: false, 
     brake: false, reset: false, boost: false, change: false,
-    up: false, down: false, yawLeft: false, yawRight: false, honk: false, view: false 
+    up: false, down: false, yawLeft: false, yawRight: false, honk: false 
   });
   useEffect(() => {
     const down = (e) => {
@@ -26,7 +26,6 @@ function usePlayerControls() {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { keys.current.boost = true; keys.current.down = true; }
       if (e.code === 'KeyC')   keys.current.change = true;
       if (e.code === 'KeyH')   keys.current.honk = true;
-      if (e.code === 'KeyV')   keys.current.view = true;
     };
     const up = (e) => {
       if (e.code === 'KeyW' || e.code === 'ArrowUp')    keys.current.forward  = false;
@@ -40,7 +39,6 @@ function usePlayerControls() {
       if (e.code === 'ShiftLeft' || e.code === 'ShiftRight') { keys.current.boost = false; keys.current.down = false; }
       if (e.code === 'KeyC')   keys.current.change = false;
       if (e.code === 'KeyH')   keys.current.honk = false;
-      if (e.code === 'KeyV')   keys.current.view = false;
     };
     window.addEventListener('keydown', down);
     window.addEventListener('keyup', up);
@@ -89,7 +87,7 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
   );
 });
 
-const Car = ({ folder, lastPos, lastRot, controls, cameraMode }) => {
+const Car = ({ folder, lastPos, lastRot, controls }) => {
   const lastChange = useRef(false);
   const { camera } = useThree();
 
@@ -407,46 +405,23 @@ const Car = ({ folder, lastPos, lastRot, controls, cameraMode }) => {
       smoothRot.current += diff * (1 - Math.exp(-20 * dt));
     }
     
-    // --- Camera Logic ---
-    if (cameraMode === 'firstPerson') {
-      // Kiểm tra an toàn để tránh lỗi khi đổi xe
-      if (chassisRef.current) {
-        // 1. Vị trí ghế lái (hơi lệch trái và cao lên)
-        const driverSeatOffset = new THREE.Vector3(-0.3, 0.4, 0.1);
-        const worldDriverPos = currentPosition.clone().add(driverSeatOffset.applyQuaternion(chassisRef.current.quaternion));
-        
-        // 2. Làm mượt vị trí (lerp)
-        camera.position.lerp(worldDriverPos, 0.5);
-        
-        // 3. Làm mượt hướng xoay (slerp)
-        const targetQuat = chassisRef.current.quaternion.clone();
-        camera.quaternion.slerp(targetQuat, 0.5);
-        
-        // Cập nhật Vector Up để camera nghiêng theo xe
-        const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(targetQuat);
-        camera.up.copy(upVector);
-      }
-    } else {
-      // Góc nhìn thứ 3 truyền thống (luôn giữ camera thăng bằng)
-      camera.up.set(0, 1, 0);
-      const dist = camAngle.current.dist;
-      const ax = camAngle.current.x;
-      const ay = camAngle.current.y;
-      
-      const horizontalDist = Math.cos(ay) * dist;
-      const offsetX = Math.sin(ax) * horizontalDist;
-      const offsetY = Math.sin(ay) * dist;
-      const offsetZ = Math.cos(ax) * horizontalDist;
-      
-      const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
-      idealOffset.applyEuler(new THREE.Euler(0, smoothRot.current, 0));
-      
-      const targetPos = currentPosition.clone().add(idealOffset);
-      camera.position.lerp(targetPos, 0.2); // Làm mượt vị trí cam 3rd person
-      
-      const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
-      camera.lookAt(lookAtPos);
-    }
+    const dist = camAngle.current.dist;
+    const ax = camAngle.current.x;
+    const ay = camAngle.current.y;
+    
+    const horizontalDist = Math.cos(ay) * dist;
+    const offsetX = Math.sin(ax) * horizontalDist;
+    const offsetY = Math.sin(ay) * dist;
+    const offsetZ = Math.cos(ax) * horizontalDist;
+    
+    const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
+    idealOffset.applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+    
+    // Khóa cứng Camera (copy) để triệt tiêu hiện tượng nhòe/bóng ma khi chạy nhanh
+    camera.position.copy(currentPosition).add(idealOffset);
+    
+    const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
+    camera.lookAt(lookAtPos);
   });
 
   return (
@@ -539,7 +514,7 @@ const Propeller = (props) => (
 );
 
 // ─── HELICOPTER ────────────────────────────────────────────────────────
-const Helicopter = ({ lastPos, lastRot, controls, cameraMode }) => {
+const Helicopter = ({ lastPos, lastRot, controls }) => {
   const { camera } = useThree();
   const firstFrame = useRef(true);
   const smoothRot = useRef(0);
@@ -646,40 +621,21 @@ const Helicopter = ({ lastPos, lastRot, controls, cameraMode }) => {
     ref.current.getWorldPosition(currentPosition);
     const rawRot = ref.current.rotation.y;
 
-    if (cameraMode === 'firstPerson') {
-      // Góc nhìn trong buồng lái (Nghiêng theo máy bay)
-      if (ref.current) {
-        const cockpitOffset = new THREE.Vector3(0, 0.4, -0.8);
-        const worldCockpitPos = currentPosition.clone().add(cockpitOffset.applyQuaternion(ref.current.quaternion));
-        
-        state.camera.position.lerp(worldCockpitPos, 0.5);
-        const targetQuat = ref.current.quaternion.clone();
-        state.camera.quaternion.slerp(targetQuat, 0.5);
-        
-        const upVector = new THREE.Vector3(0, 1, 0).applyQuaternion(targetQuat);
-        state.camera.up.copy(upVector);
-      }
-    } else {
-      // Góc nhìn thứ 3 (Thăng bằng)
-      state.camera.up.set(0, 1, 0);
-      const dist = camAngle.current.dist;
-      const ax = camAngle.current.x;
-      const ay = camAngle.current.y;
-      
-      const horizontalDist = Math.cos(ay) * dist;
-      const offsetX = Math.sin(ax) * horizontalDist;
-      const offsetY = Math.sin(ay) * dist;
-      const offsetZ = Math.cos(ax) * horizontalDist;
-      
-      const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
-      idealOffset.applyEuler(new THREE.Euler(0, rawRot, 0));
-      
-      const targetPos = currentPosition.clone().add(idealOffset);
-      state.camera.position.lerp(targetPos, 0.2);
-      
-      const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, rawRot, 0)));
-      state.camera.lookAt(lookAtPos);
-    }
+    const dist = camAngle.current.dist;
+    const ax = camAngle.current.x;
+    const ay = camAngle.current.y;
+    
+    const horizontalDist = Math.cos(ay) * dist;
+    const offsetX = Math.sin(ax) * horizontalDist;
+    const offsetY = Math.sin(ay) * dist;
+    const offsetZ = Math.cos(ax) * horizontalDist;
+    
+    const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
+    idealOffset.applyEuler(new THREE.Euler(0, rawRot, 0));
+    state.camera.position.copy(currentPosition).add(idealOffset);
+    
+    const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, rawRot, 0)));
+    state.camera.lookAt(lookAtPos);
   });
 
   return (
@@ -787,39 +743,25 @@ const MapWithPhysics = ({ mapFile = 'map.glb', collisionFile = 'map_collision.gl
 };
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
-function Game({ vehicleFolder, setVehicleFolder, debug, cameraMode, setCameraMode }) {
+function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const controls = usePlayerControls();
   const lastChange = useRef(false);
-  const lastViewChange = useRef(false);
   
   const lastPos = useRef([0, 0.5, 0]);
   const lastRot = useRef([0, 0, 0]);
 
-  useFrame(() => {
-    // Toggle camera view
-    if (controls.current.view) {
-      if (!lastViewChange.current) {
-        setCameraMode(prev => prev === 'thirdPerson' ? 'firstPerson' : 'thirdPerson');
-        lastViewChange.current = true;
-      }
-    } else {
-      lastViewChange.current = false;
-    }
-  });
-
   const contents = (
     <>
       {vehicleFolder === 'helicopter' ? (
-        <Helicopter lastPos={lastPos} lastRot={lastRot} controls={controls} cameraMode={cameraMode} />
+        <Helicopter lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : vehicleFolder === 'ship' ? (
-        <Car folder="ship" lastPos={lastPos} lastRot={lastRot} controls={controls} cameraMode={cameraMode} />
+        <Car folder="ship" lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : (
         <Car 
           folder={vehicleFolder} 
           lastPos={lastPos} 
           lastRot={lastRot}
           controls={controls}
-          cameraMode={cameraMode}
         />
       )}
       <Ground />
@@ -865,7 +807,6 @@ const MobileControls = ({ vehicleFolder }) => {
       </div>
 
       <div className="mc-top-right">
-        <button className="mc-btn action-btn" style={{ fontSize: '20px' }} onPointerDown={handlePointerDown('KeyV')} onPointerUp={handlePointerUp('KeyV')} onPointerLeave={handlePointerUp('KeyV')}>🎥</button>
         {vehicleFolder !== 'helicopter' && vehicleFolder !== 'ship' && (
           <button className="mc-btn action-btn" style={{ fontSize: '20px' }} onPointerDown={handlePointerDown('KeyH')} onPointerUp={handlePointerUp('KeyH')} onPointerLeave={handlePointerUp('KeyH')}>📢</button>
         )}
@@ -886,7 +827,6 @@ export default function App() {
   const [showShop, setShowShop] = useState(false);
   const [debug, setDebug] = useState(false);
   const [weather, setWeather] = useState(WEATHER_PRESETS.sunny);
-  const [cameraMode, setCameraMode] = useState('thirdPerson'); // 'thirdPerson' | 'firstPerson'
   
   // Hệ thống vàng và xe đã mở khóa
   const [gold, setGold] = useState(10000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
@@ -1424,13 +1364,7 @@ export default function App() {
         <ambientLight intensity={weather.ambientIntensity} color={weather.ambientColor} />
         <directionalLight position={[10, 20, 10]} intensity={weather.sunIntensity} color={weather.sunColor} />
         <directionalLight position={[-10, 10, -10]} intensity={weather.sunIntensity * 0.3} color={weather.sunColor} />
-        <Game 
-          vehicleFolder={vehicleFolder} 
-          setVehicleFolder={setVehicleFolder} 
-          debug={debug} 
-          cameraMode={cameraMode}
-          setCameraMode={setCameraMode}
-        />
+        <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
       </Canvas>
       <WeatherPanel weather={weather} setWeather={setWeather} />
       <MobileControls vehicleFolder={vehicleFolder} />
