@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from 'react';
+import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 
@@ -15,7 +15,7 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 150,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -33,7 +33,7 @@ const WEATHER_PRESETS = {
     sunColor: '#aabbcc',
     rainCount: 10000,
     rainLength: 0.8,
-    rainSpread: 150,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -51,7 +51,7 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 150,
+    rainSpread: 200,
     snowCount: 8000,
     snowSize: 0.22,
     snowOpacity: 0.9,
@@ -69,7 +69,7 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 150,
+    rainSpread: 200,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -85,68 +85,77 @@ function lerpColor(a, b, t) {
   return '#' + ca.lerp(cb, t).getHexString();
 }
 
-// ─── RAIN PARTICLES (LineSegments – hỗ trợ điều chỉnh độ dài) ────────────────
-function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 150 }) {
+// ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
+const MAX_RAIN = 30000;
+function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 200 }) {
   const mesh = useRef();
-  const positions = useRef(null);
-  const velocities = useRef(null);
+  const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
+  const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
 
   useEffect(() => {
-    if (count === 0) return;
-    // Mỗi hạt mưa = 1 đoạn thẳng → 2 đỉnh → 6 số float
-    const pos = new Float32Array(count * 6);
-    const vel = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < MAX_RAIN; i++) {
       const x = (Math.random() - 0.5) * rainSpread;
-      const y = Math.random() * 30 + 5;
+      const y = Math.random() * 40;
       const z = (Math.random() - 0.5) * rainSpread;
-      // Đỉnh trên
-      pos[i * 6 + 0] = x;
-      pos[i * 6 + 1] = y;
-      pos[i * 6 + 2] = z;
-      // Đỉnh dưới (cách nhau rainLength)
-      pos[i * 6 + 3] = x;
-      pos[i * 6 + 4] = y - rainLength;
-      pos[i * 6 + 5] = z;
-      vel[i] = 15 + Math.random() * 10;
+      positions[i * 6 + 0] = x; positions[i * 6 + 1] = y; positions[i * 6 + 2] = z;
+      positions[i * 6 + 3] = x; positions[i * 6 + 4] = y - rainLength; positions[i * 6 + 5] = z;
+      velocities[i] = 15 + Math.random() * 10;
     }
-    positions.current = pos;
-    velocities.current = vel;
-    if (mesh.current) {
-      mesh.current.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    }
-  }, [count, rainLength, rainSpread]);
+  }, []);
 
   useFrame((state, delta) => {
-    if (!mesh.current || !positions.current || count === 0) return;
-    
-    // Theo chân camera để bao phủ toàn bộ map mà không tốn hiệu năng
-    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
-    
-    const pos = positions.current;
-    const vel = velocities.current;
+    if (!mesh.current || count === 0) {
+      if (mesh.current) mesh.current.visible = false;
+      return;
+    }
+    mesh.current.visible = true;
+    const pos = positions;
+    const vel = velocities;
+    const camX = state.camera.position.x;
+    const camZ = state.camera.position.z;
+    const halfSpread = rainSpread / 2;
+
     for (let i = 0; i < count; i++) {
-      pos[i * 6 + 1] -= vel[i] * delta;
-      pos[i * 6 + 4] -= vel[i] * delta;
+      // Rơi xuống
+      const dy = vel[i] * delta;
+      pos[i * 6 + 1] -= dy;
+      pos[i * 6 + 4] -= dy;
+
+      // Wrap X
+      if (pos[i * 6 + 0] - camX > halfSpread) {
+        pos[i * 6 + 0] -= rainSpread;
+        pos[i * 6 + 3] -= rainSpread;
+      } else if (pos[i * 6 + 0] - camX < -halfSpread) {
+        pos[i * 6 + 0] += rainSpread;
+        pos[i * 6 + 3] += rainSpread;
+      }
+
+      // Wrap Z
+      if (pos[i * 6 + 2] - camZ > halfSpread) {
+        pos[i * 6 + 2] -= rainSpread;
+        pos[i * 6 + 5] -= rainSpread;
+      } else if (pos[i * 6 + 2] - camZ < -halfSpread) {
+        pos[i * 6 + 2] += rainSpread;
+        pos[i * 6 + 5] += rainSpread;
+      }
+
+      // Reset khi chạm đất
       if (pos[i * 6 + 1] < 0) {
-        const x = (Math.random() - 0.5) * rainSpread;
-        const y = 30 + Math.random() * 10;
-        const z = (Math.random() - 0.5) * rainSpread;
-        pos[i * 6 + 0] = x;  pos[i * 6 + 1] = y;              pos[i * 6 + 2] = z;
-        pos[i * 6 + 3] = x;  pos[i * 6 + 4] = y - rainLength;  pos[i * 6 + 5] = z;
+        pos[i * 6 + 1] = 35 + Math.random() * 5;
+        pos[i * 6 + 4] = pos[i * 6 + 1] - rainLength;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
+    mesh.current.geometry.setDrawRange(0, count * 2);
   });
 
-  if (count === 0) return null;
   return (
     <lineSegments ref={mesh}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          count={count * 2}
-          array={new Float32Array(count * 6)}
+          count={MAX_RAIN * 2}
+          array={positions}
           itemSize={3}
         />
       </bufferGeometry>
@@ -160,58 +169,62 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 150 }) 
   );
 }
 
-// ─── SNOW PARTICLES (hỗ trợ điều chỉnh kích thước & độ dày) ─────────────────
-function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 150 }) {
+// ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
+const MAX_SNOW = 30000;
+function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 200 }) {
   const mesh = useRef();
-  const positions = useRef(null);
-  const drifts = useRef(null);
+  const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
+  const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);
 
   useEffect(() => {
-    if (count === 0) return;
-    const pos = new Float32Array(count * 3);
-    const drift = new Float32Array(count);
-    for (let i = 0; i < count; i++) {
-      pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
-      pos[i * 3 + 1] = Math.random() * 35;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
-      drift[i] = (Math.random() - 0.5) * 0.5;
+    for (let i = 0; i < MAX_SNOW; i++) {
+      positions[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
+      positions[i * 3 + 1] = Math.random() * 35;
+      positions[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
+      drifts[i] = (Math.random() - 0.5) * 0.5;
     }
-    positions.current = pos;
-    drifts.current = drift;
-    if (mesh.current) {
-      mesh.current.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
-    }
-  }, [count]);
+  }, []);
 
   useFrame((state, delta) => {
-    if (!mesh.current || !positions.current || count === 0) return;
-
-    // Theo chân camera
-    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
-    
-    const pos = positions.current;
-    const drift = drifts.current;
+    if (!mesh.current || count === 0) {
+      if (mesh.current) mesh.current.visible = false;
+      return;
+    }
+    mesh.current.visible = true;
+    const pos = positions;
+    const drift = drifts;
     const t = Date.now() * 0.001;
+    const camX = state.camera.position.x;
+    const camZ = state.camera.position.z;
+    const halfSpread = snowSpread / 2;
+
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
       pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
+
+      // Wrap X
+      if (pos[i * 3 + 0] - camX > halfSpread) pos[i * 3 + 0] -= snowSpread;
+      else if (pos[i * 3 + 0] - camX < -halfSpread) pos[i * 3 + 0] += snowSpread;
+
+      // Wrap Z
+      if (pos[i * 3 + 2] - camZ > halfSpread) pos[i * 3 + 2] -= snowSpread;
+      else if (pos[i * 3 + 2] - camZ < -halfSpread) pos[i * 3 + 2] += snowSpread;
+
       if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
         pos[i * 3 + 1] = 35;
-        pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
+    mesh.current.geometry.setDrawRange(0, count);
   });
 
-  if (count === 0) return null;
   return (
     <points ref={mesh}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
-          count={count}
-          array={new Float32Array(count * 3)}
+          count={MAX_SNOW}
+          array={positions}
           itemSize={3}
         />
       </bufferGeometry>
@@ -256,8 +269,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 150} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.rainSpread ?? 150} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 200} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.rainSpread ?? 200} />
     </>
   );
 }
