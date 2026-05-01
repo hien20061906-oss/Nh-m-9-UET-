@@ -87,8 +87,7 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
   );
 });
 
-const Car = ({ folder, lastPos, lastRot }) => {
-  const controls = usePlayerControls();
+const Car = ({ folder, lastPos, lastRot, controls }) => {
   const lastChange = useRef(false);
   const { camera } = useThree();
 
@@ -515,8 +514,7 @@ const Propeller = (props) => (
 );
 
 // ─── HELICOPTER ────────────────────────────────────────────────────────
-const Helicopter = ({ lastPos, lastRot }) => {
-  const controls = usePlayerControls();
+const Helicopter = ({ lastPos, lastRot, controls }) => {
   const { camera } = useThree();
   const firstFrame = useRef(true);
   const smoothRot = useRef(0);
@@ -755,14 +753,15 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const contents = (
     <>
       {vehicleFolder === 'helicopter' ? (
-        <Helicopter lastPos={lastPos} lastRot={lastRot} />
+        <Helicopter lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : vehicleFolder === 'ship' ? (
-        <Car folder="ship" lastPos={lastPos} lastRot={lastRot} />
+        <Car folder="ship" lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : (
         <Car 
           folder={vehicleFolder} 
           lastPos={lastPos} 
           lastRot={lastRot}
+          controls={controls}
         />
       )}
       <Ground />
