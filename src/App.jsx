@@ -409,10 +409,10 @@ const Car = ({ folder, lastPos, lastRot, controls, cameraMode }) => {
     
     // --- Camera Logic ---
     if (cameraMode === 'firstPerson') {
-      // Góc nhìn trên nóc xe (First Person)
-      const roofOffset = new THREE.Vector3(0, 0.6, -0.4).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+      // Góc nhìn trên nóc xe (Sử dụng rawRot để bám sát 100% hướng xe khi quẹo)
+      const roofOffset = new THREE.Vector3(0, 0.6, -0.4).applyEuler(new THREE.Euler(0, rawRot, 0));
       camera.position.copy(currentPosition).add(roofOffset);
-      const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0.5, -5).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
+      const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0.5, -5).applyEuler(new THREE.Euler(0, rawRot, 0)));
       camera.lookAt(lookAtPos);
     } else {
       // Góc nhìn thứ 3 truyền thống
