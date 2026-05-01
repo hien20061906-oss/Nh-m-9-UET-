@@ -427,17 +427,17 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   return (
     <group ref={vehicle}>
-      <mesh key={folder} ref={chassisRef} castShadow>
+      <mesh ref={chassisRef} castShadow>
         <meshStandardMaterial visible={false} />
         <group position={[0, chassisY, 0]} rotation={[0, Math.PI / 2, 0]}>
           <primitive object={chassisScene} />
         </group>
       </mesh>
 
-      <Wheel key={`${folder}-0`} ref={wheel0} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-1`} ref={wheel1} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-2`} ref={wheel2} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
-      <Wheel key={`${folder}-3`} ref={wheel3} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel ref={wheel0} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel ref={wheel1} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel ref={wheel2} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
+      <Wheel ref={wheel3} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
     </group>
   );
 };
