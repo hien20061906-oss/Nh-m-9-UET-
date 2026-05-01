@@ -548,6 +548,9 @@ const Helicopter = ({ lastPos, lastRot, controls }) => {
     mass: 500,
     position: lastPos.current,
     rotation: lastRot.current,
+    velocity: [0, 0, 0], 
+    angularVelocity: [0, 0, 0], 
+    allowSleep: false, // Tắt chế độ ngủ để trực thăng luôn sẵn sàng nhận lệnh
     linearDamping: 0.8, 
     angularDamping: 0.95,
     angularFactor: [0, 1, 0], // Khóa trục X và Z để máy bay luôn thăng bằng, không bị nghiêng
@@ -568,6 +571,12 @@ const Helicopter = ({ lastPos, lastRot, controls }) => {
     const unsubPos = api.position.subscribe(v => { lastPos.current = v; });
     const unsubRot = api.rotation.subscribe(v => { lastRot.current = v; });
     const unsubVel = api.velocity.subscribe(v => { velocity.current = v; });
+    
+    // Đảm bảo trực thăng không bị khóa trục Y ngay khi vừa nạp
+    api.linearFactor.set(1, 1, 1);
+    hovering.current = false;
+    api.wakeUp();
+
     return () => { unsubPos(); unsubRot(); unsubVel(); };
   }, [api, lastPos, lastRot]);
 
@@ -589,20 +598,33 @@ const Helicopter = ({ lastPos, lastRot, controls }) => {
       if (hovering.current) {
         // Vừa bấm phím: Mở khóa trục Y để bay lên/xuống bình thường
         api.linearFactor.set(1, 1, 1);
+        api.wakeUp();
         hovering.current = false;
       }
       
       const climbForce = 15000; // Lực nâng đủ lớn để thắng trọng lực và bay vút lên
-      if (up) api.applyLocalForce([0, climbForce, 0], [0, 0, 0]);
-      if (down) api.applyLocalForce([0, -5000, 0], [0, 0, 0]); // Trọng lực tự kéo xuống một phần, cộng thêm lực này để rơi nhanh hơn
+      if (up) {
+        api.wakeUp();
+        api.applyLocalForce([0, climbForce, 0], [0, 0, 0]);
+      }
+      if (down) {
+        api.wakeUp();
+        api.applyLocalForce([0, -5000, 0], [0, 0, 0]);
+      }
     }
 
     // Lực di chuyển tới lùi
     const moveForce = 5000;
     const torque = 1000;
     
-    if (forward) api.applyLocalForce([0, 0, -moveForce], [0, 0, 0]);
-    if (backward) api.applyLocalForce([0, 0, moveForce], [0, 0, 0]);
+    if (forward) {
+      api.wakeUp();
+      api.applyLocalForce([0, 0, -moveForce], [0, 0, 0]);
+    }
+    if (backward) {
+      api.wakeUp();
+      api.applyLocalForce([0, 0, moveForce], [0, 0, 0]);
+    }
 
     // Tự động phanh mượt mà khi nhả phím
     if (!up && !down && !forward && !backward) {
@@ -747,7 +769,7 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const controls = usePlayerControls();
   const lastChange = useRef(false);
   
-  const lastPos = useRef([0, 0.5, 0]);
+  const lastPos = useRef([0, 1.5, 0]);
   const lastRot = useRef([0, 0, 0]);
 
   const contents = (
