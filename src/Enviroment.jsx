@@ -15,7 +15,7 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 200,
+    rainSpread: 600,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -31,9 +31,9 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 10000,
+    rainCount: 80000,
     rainLength: 0.8,
-    rainSpread: 200,
+    rainSpread: 600,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
@@ -51,8 +51,8 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 200,
-    snowCount: 8000,
+    rainSpread: 600,
+    snowCount: 60000,
     snowSize: 0.22,
     snowOpacity: 0.9,
     skyTop: '#b0c8e8',
@@ -86,8 +86,8 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 30000;
-function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 200 }) {
+const MAX_RAIN = 150000;
+function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
   const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
@@ -170,8 +170,8 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 200 }) 
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 30000;
-function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 200 }) {
+const MAX_SNOW = 150000;
+function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
   const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);
@@ -269,8 +269,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 200} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.rainSpread ?? 200} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 600} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.rainSpread ?? 600} />
     </>
   );
 }
@@ -442,7 +442,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Số hạt mưa"
               value={manual.rainCount}
-              min={0} max={30000} step={100}
+              min={0} max={150000} step={1000}
               onChange={v => handleSlider('rainCount', Math.round(v))}
               color="#aaddff"
             />
@@ -458,7 +458,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Độ dày vùng mưa"
               value={manual.rainSpread}
-              min={10} max={500} step={5}
+              min={10} max={1500} step={50}
               onChange={v => handleSlider('rainSpread', Math.round(v))}
               color="#66bbff"
             />
@@ -466,7 +466,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="❄️ Số hạt tuyết"
               value={manual.snowCount}
-              min={0} max={30000} step={100}
+              min={0} max={150000} step={1000}
               onChange={v => handleSlider('snowCount', Math.round(v))}
               color="#ddeeff"
             />
