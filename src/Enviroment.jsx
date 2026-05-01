@@ -15,11 +15,11 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 500,
+    rainSpread: 100,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 500,
+    snowSpread: 100,
     skyTop: '#87CEEB',
     skyBottom: '#f0905a',
   },
@@ -32,13 +32,13 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 15000,
+    rainCount: 5000,
     rainLength: 0.8,
-    rainSpread: 500,
+    rainSpread: 100,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 500,
+    snowSpread: 100,
     skyTop: '#4a5a6a',
     skyBottom: '#6a7a8a',
   },
@@ -53,11 +53,11 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 500,
-    snowCount: 2500,
+    rainSpread: 100,
+    snowCount: 5000,
     snowSize: 0.22,
     snowOpacity: 0.9,
-    snowSpread: 500,
+    snowSpread: 100,
     skyTop: '#b0c8e8',
     skyBottom: '#dce8f5',
   },
@@ -72,11 +72,11 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 500,
+    rainSpread: 100,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 500,
+    snowSpread: 100,
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
@@ -121,10 +121,14 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
     }
   }, [count, rainLength, rainSpread]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const vel = velocities.current;
+    
+    // Đồng bộ vị trí mesh theo camera (chỉ X và Z) để mưa luôn đi theo người chơi
+    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
+
     for (let i = 0; i < count; i++) {
       pos[i * 6 + 1] -= vel[i] * delta;
       pos[i * 6 + 4] -= vel[i] * delta;
@@ -183,11 +187,15 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 120 }) 
     }
   }, [count, snowSpread]);
 
-  useFrame((_, delta) => {
+  useFrame((state, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const drift = drifts.current;
     const t = Date.now() * 0.001;
+
+    // Đồng bộ vị trí mesh theo camera (chỉ X và Z) để tuyết luôn đi theo người chơi
+    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
+
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
       pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
@@ -252,8 +260,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 500} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 500} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 100} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 100} />
     </>
   );
 }
@@ -443,7 +451,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Độ dày vùng mưa"
               value={manual.rainSpread}
-              min={10} max={1000} step={10}
+              min={10} max={400} step={5}
               onChange={v => handleSlider('rainSpread', Math.round(v))}
               color="#66bbff"
             />
@@ -475,7 +483,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌨️ Độ dày vùng tuyết"
               value={manual.snowSpread}
-              min={10} max={1000} step={10}
+              min={10} max={400} step={5}
               onChange={v => handleSlider('snowSpread', Math.round(v))}
               color="#eef5ff"
             />
