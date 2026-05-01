@@ -306,8 +306,8 @@ export function WeatherPanel({ weather, setWeather }) {
         onClick={() => setIsOpen(o => !o)}
         style={{
           position: 'fixed',
-          bottom: '20px',
-          right: '20px',
+          top: '15px',
+          right: '15px',
           zIndex: 200,
           padding: '10px 18px',
           background: 'rgba(10, 10, 20, 0.8)',
@@ -333,10 +333,12 @@ export function WeatherPanel({ weather, setWeather }) {
           id="weather-panel"
           style={{
             position: 'fixed',
-            bottom: '72px',
-            right: '20px',
+            top: '60px',
+            right: '15px',
             zIndex: 200,
             width: '280px',
+            maxHeight: '80vh',
+            overflowY: 'auto',
             background: 'rgba(8, 10, 18, 0.92)',
             border: '1px solid rgba(255,255,255,0.12)',
             borderRadius: '18px',

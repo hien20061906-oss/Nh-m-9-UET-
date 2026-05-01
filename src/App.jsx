@@ -804,6 +804,7 @@ const MobileControls = ({ vehicleFolder }) => {
       <div className="mc-left">
         <button className="mc-btn" onPointerDown={handlePointerDown('KeyA')} onPointerUp={handlePointerUp('KeyA')} onPointerLeave={handlePointerUp('KeyA')}>◀</button>
         <button className="mc-btn" onPointerDown={handlePointerDown('KeyD')} onPointerUp={handlePointerUp('KeyD')} onPointerLeave={handlePointerUp('KeyD')}>▶</button>
+        <button className="mc-btn action-btn" style={{ marginLeft: '10px' }} onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{vehicleFolder === 'helicopter' ? 'Xuống' : 'Nitro'}</button>
       </div>
 
       <div className="mc-top-right">
@@ -811,7 +812,6 @@ const MobileControls = ({ vehicleFolder }) => {
           <button className="mc-btn action-btn" style={{ fontSize: '20px' }} onPointerDown={handlePointerDown('KeyH')} onPointerUp={handlePointerUp('KeyH')} onPointerLeave={handlePointerUp('KeyH')}>📢</button>
         )}
         <button className="mc-btn action-btn" onPointerDown={handlePointerDown('Space')} onPointerUp={handlePointerUp('Space')} onPointerLeave={handlePointerUp('Space')}>{vehicleFolder === 'helicopter' ? 'Lên' : 'Phanh'}</button>
-        <button className="mc-btn action-btn" onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{vehicleFolder === 'helicopter' ? 'Xuống' : 'Nitro'}</button>
       </div>
 
       <div className="mc-right">
