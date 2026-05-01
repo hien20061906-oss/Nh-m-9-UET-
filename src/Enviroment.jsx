@@ -32,7 +32,7 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 6000,
+    rainCount: 15000,
     rainLength: 0.8,
     rainSpread: 500,
     snowCount: 0,
@@ -153,7 +153,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
       <lineBasicMaterial
         color={color}
         transparent
-        opacity={0.65}
+        opacity={0.8}
         depthWrite={false}
       />
     </lineSegments>
@@ -427,7 +427,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Số hạt mưa"
               value={manual.rainCount}
-              min={0} max={10000} step={100}
+              min={0} max={30000} step={500}
               onChange={v => handleSlider('rainCount', Math.round(v))}
               color="#aaddff"
             />
