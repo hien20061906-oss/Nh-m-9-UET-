@@ -15,10 +15,11 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 200,
+    rainSpread: 500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    snowSpread: 500,
     skyTop: '#87CEEB',
     skyBottom: '#f0905a',
   },
@@ -31,12 +32,13 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 3000,
+    rainCount: 2500,
     rainLength: 0.8,
-    rainSpread: 200,
+    rainSpread: 500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    snowSpread: 500,
     skyTop: '#4a5a6a',
     skyBottom: '#6a7a8a',
   },
@@ -51,10 +53,11 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 200,
+    rainSpread: 500,
     snowCount: 2500,
     snowSize: 0.22,
     snowOpacity: 0.9,
+    snowSpread: 500,
     skyTop: '#b0c8e8',
     skyBottom: '#dce8f5',
   },
@@ -69,10 +72,11 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 200,
+    rainSpread: 500,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    snowSpread: 500,
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
@@ -98,7 +102,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
     const vel = new Float32Array(count);
     for (let i = 0; i < count; i++) {
       const x = (Math.random() - 0.5) * rainSpread;
-      const y = Math.random() * 30 + 5;
+      const y = Math.random() * 40 + 5;
       const z = (Math.random() - 0.5) * rainSpread;
       // Đỉnh trên
       pos[i * 6 + 0] = x;
@@ -117,33 +121,19 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
     }
   }, [count, rainLength, rainSpread]);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const vel = velocities.current;
-    const camPos = state.camera.position;
-    const halfSpread = rainSpread / 2;
-
     for (let i = 0; i < count; i++) {
       pos[i * 6 + 1] -= vel[i] * delta;
       pos[i * 6 + 4] -= vel[i] * delta;
-      
-      // Infinite wrap X Z around camera
-      let dx = pos[i * 6 + 0] - camPos.x;
-      let dz = pos[i * 6 + 2] - camPos.z;
-      if (dx > halfSpread) { pos[i * 6 + 0] -= rainSpread; pos[i * 6 + 3] -= rainSpread; }
-      else if (dx < -halfSpread) { pos[i * 6 + 0] += rainSpread; pos[i * 6 + 3] += rainSpread; }
-      
-      if (dz > halfSpread) { pos[i * 6 + 2] -= rainSpread; pos[i * 6 + 5] -= rainSpread; }
-      else if (dz < -halfSpread) { pos[i * 6 + 2] += rainSpread; pos[i * 6 + 5] += rainSpread; }
-
       if (pos[i * 6 + 1] < 0) {
-        pos[i * 6 + 1] = 30 + Math.random() * 10;
-        pos[i * 6 + 4] = pos[i * 6 + 1] - rainLength;
-        const nx = camPos.x + (Math.random() - 0.5) * rainSpread;
-        const nz = camPos.z + (Math.random() - 0.5) * rainSpread;
-        pos[i * 6 + 0] = nx; pos[i * 6 + 2] = nz;
-        pos[i * 6 + 3] = nx; pos[i * 6 + 5] = nz;
+        const x = (Math.random() - 0.5) * rainSpread;
+        const y = 40 + Math.random() * 10;
+        const z = (Math.random() - 0.5) * rainSpread;
+        pos[i * 6 + 0] = x;  pos[i * 6 + 1] = y;              pos[i * 6 + 2] = z;
+        pos[i * 6 + 3] = x;  pos[i * 6 + 4] = y - rainLength;  pos[i * 6 + 5] = z;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
@@ -171,7 +161,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
 }
 
 // ─── SNOW PARTICLES (hỗ trợ điều chỉnh kích thước & độ dày) ─────────────────
-function Snow({ count, snowSize = 0.18, snowOpacity = 0.85 }) {
+function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 120 }) {
   const mesh = useRef();
   const positions = useRef(null);
   const drifts = useRef(null);
@@ -181,9 +171,9 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85 }) {
     const pos = new Float32Array(count * 3);
     const drift = new Float32Array(count);
     for (let i = 0; i < count; i++) {
-      pos[i * 3 + 0] = (Math.random() - 0.5) * 200;
-      pos[i * 3 + 1] = Math.random() * 35;
-      pos[i * 3 + 2] = (Math.random() - 0.5) * 200;
+      pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
+      pos[i * 3 + 1] = Math.random() * 40;
+      pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
       drift[i] = (Math.random() - 0.5) * 0.5;
     }
     positions.current = pos;
@@ -191,34 +181,20 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85 }) {
     if (mesh.current) {
       mesh.current.geometry.setAttribute('position', new THREE.BufferAttribute(pos, 3));
     }
-  }, [count]);
+  }, [count, snowSpread]);
 
-  useFrame((state, delta) => {
+  useFrame((_, delta) => {
     if (!mesh.current || !positions.current || count === 0) return;
     const pos = positions.current;
     const drift = drifts.current;
     const t = Date.now() * 0.001;
-    const camPos = state.camera.position;
-    const snowSpread = 200;
-    const halfSpread = snowSpread / 2;
-
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
       pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
-      
-      // Infinite wrap X Z around camera
-      let dx = pos[i * 3 + 0] - camPos.x;
-      let dz = pos[i * 3 + 2] - camPos.z;
-      if (dx > halfSpread) pos[i * 3 + 0] -= snowSpread;
-      else if (dx < -halfSpread) pos[i * 3 + 0] += snowSpread;
-      
-      if (dz > halfSpread) pos[i * 3 + 2] -= snowSpread;
-      else if (dz < -halfSpread) pos[i * 3 + 2] += snowSpread;
-
       if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 0] = camPos.x + (Math.random() - 0.5) * snowSpread;
-        pos[i * 3 + 1] = 35;
-        pos[i * 3 + 2] = camPos.z + (Math.random() - 0.5) * snowSpread;
+        pos[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
+        pos[i * 3 + 1] = 40;
+        pos[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
@@ -276,8 +252,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 120} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 500} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 500} />
     </>
   );
 }
@@ -296,6 +272,7 @@ export function WeatherPanel({ weather, setWeather }) {
     snowCount:        WEATHER_PRESETS.sunny.snowCount,
     snowSize:         WEATHER_PRESETS.sunny.snowSize,
     snowOpacity:      WEATHER_PRESETS.sunny.snowOpacity,
+    snowSpread:       WEATHER_PRESETS.sunny.snowSpread,
   });
   const [isManualMode, setIsManualMode] = useState(false);
 
@@ -314,6 +291,7 @@ export function WeatherPanel({ weather, setWeather }) {
       snowCount:        p.snowCount,
       snowSize:         p.snowSize,
       snowOpacity:      p.snowOpacity,
+      snowSpread:       p.snowSpread,
     });
     setWeather(p);
   }, [setWeather]);
@@ -465,7 +443,7 @@ export function WeatherPanel({ weather, setWeather }) {
             <SliderRow
               label="🌧️ Độ dày vùng mưa"
               value={manual.rainSpread}
-              min={10} max={300} step={5}
+              min={10} max={1000} step={10}
               onChange={v => handleSlider('rainSpread', Math.round(v))}
               color="#66bbff"
             />
@@ -491,6 +469,14 @@ export function WeatherPanel({ weather, setWeather }) {
               value={manual.snowOpacity}
               min={0.1} max={1.0} step={0.05}
               onChange={v => handleSlider('snowOpacity', v)}
+              color="#eef5ff"
+            />
+
+            <SliderRow
+              label="🌨️ Độ dày vùng tuyết"
+              value={manual.snowSpread}
+              min={10} max={1000} step={10}
+              onChange={v => handleSlider('snowSpread', Math.round(v))}
               color="#eef5ff"
             />
 
