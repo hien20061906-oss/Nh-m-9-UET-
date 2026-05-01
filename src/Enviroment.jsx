@@ -9,7 +9,7 @@ const WEATHER_PRESETS = {
     fogColor: '#f0905a',
     fogNear: 80,
     fogFar: 300,
-    ambientIntensity: 1.5,
+    ambientIntensity: 0.2,
     ambientColor: '#fff5e0',
     sunIntensity: 2.0,
     sunColor: '#ffe0c0',
