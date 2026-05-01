@@ -15,11 +15,11 @@ const WEATHER_PRESETS = {
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 800,
+    rainSpread: 2000,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 800,
+    snowSpread: 2000,
     skyTop: '#87CEEB',
     skyBottom: '#f0905a',
   },
@@ -32,13 +32,13 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 20000,
+    rainCount: 50000,
     rainLength: 0.8,
-    rainSpread: 800,
+    rainSpread: 2000,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 800,
+    snowSpread: 2000,
     skyTop: '#4a5a6a',
     skyBottom: '#6a7a8a',
   },
@@ -53,11 +53,11 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 800,
-    snowCount: 20000,
+    rainSpread: 2000,
+    snowCount: 50000,
     snowSize: 0.22,
     snowOpacity: 0.9,
-    snowSpread: 800,
+    snowSpread: 2000,
     skyTop: '#b0c8e8',
     skyBottom: '#dce8f5',
   },
@@ -72,11 +72,11 @@ const WEATHER_PRESETS = {
     sunColor: '#d0d0c0',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 800,
+    rainSpread: 2000,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
-    snowSpread: 800,
+    snowSpread: 2000,
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
@@ -126,8 +126,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 120 }) 
     const pos = positions.current;
     const vel = velocities.current;
     
-    // Đồng bộ vị trí mesh theo camera (chỉ X và Z) để mưa luôn đi theo người chơi
-    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
+    // Đã xoá logic đi theo camera để mưa trải dài cố định trên toàn map
 
     for (let i = 0; i < count; i++) {
       pos[i * 6 + 1] -= vel[i] * delta;
@@ -193,8 +192,7 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 120 }) 
     const drift = drifts.current;
     const t = Date.now() * 0.001;
 
-    // Đồng bộ vị trí mesh theo camera (chỉ X và Z) để tuyết luôn đi theo người chơi
-    mesh.current.position.set(state.camera.position.x, 0, state.camera.position.z);
+    // Đã xoá logic đi theo camera để tuyết trải dài cố định trên toàn map
 
     for (let i = 0; i < count; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
@@ -260,8 +258,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 800} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 800} />
+      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 2000} />
+      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.snowSpread ?? 2000} />
     </>
   );
 }
@@ -433,9 +431,9 @@ export function WeatherPanel({ weather, setWeather }) {
             />
 
             <SliderRow
-              label="🌧️ Số hạt mưa"
+              label="🌧️ Mật độ hạt mưa"
               value={manual.rainCount}
-              min={0} max={30000} step={500}
+              min={0} max={150000} step={1000}
               onChange={v => handleSlider('rainCount', Math.round(v))}
               color="#aaddff"
             />
@@ -449,17 +447,17 @@ export function WeatherPanel({ weather, setWeather }) {
             />
 
             <SliderRow
-              label="🌧️ Độ dày vùng mưa"
+              label="📏 Phạm vi mưa (Toàn Map)"
               value={manual.rainSpread}
-              min={10} max={1500} step={50}
+              min={100} max={3000} step={100}
               onChange={v => handleSlider('rainSpread', Math.round(v))}
               color="#66bbff"
             />
 
             <SliderRow
-              label="❄️ Số hạt tuyết"
+              label="❄️ Mật độ hạt tuyết"
               value={manual.snowCount}
-              min={0} max={50000} step={50}
+              min={0} max={150000} step={1000}
               onChange={v => handleSlider('snowCount', Math.round(v))}
               color="#ddeeff"
             />
@@ -481,9 +479,9 @@ export function WeatherPanel({ weather, setWeather }) {
             />
 
             <SliderRow
-              label="🌨️ Độ dày vùng tuyết"
+              label="🌨️ Phạm vi tuyết (Toàn Map)"
               value={manual.snowSpread}
-              min={10} max={1500} step={50}
+              min={100} max={3000} step={100}
               onChange={v => handleSlider('snowSpread', Math.round(v))}
               color="#eef5ff"
             />
