@@ -76,7 +76,7 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
     collisionFilterGroup: 0,
     collisionFilterMask: 0,
     args: [radius, radius, width, 16],
-  }), []);
+  }), ref);
 
   return (
     <mesh ref={ref}>
@@ -158,7 +158,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   // Sử dụng useCompoundBody để tạo 2 lớp vật lý cho xe
   const [chassisRef, chassisApi] = useCompoundBody(() => ({
-    mass: 300, 
+    mass: config.mass || 150, 
     position: lastPos.current,
     rotation: lastRot.current,
     velocity: [0, 0, 0], 
@@ -174,7 +174,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       { type: 'Sphere', position: [0, 0.3,  0.6], args: [0.4] }, // Mũi xe
       { type: 'Sphere', position: [0, 0.3, -0.6], args: [0.4] }  // Đuôi xe
     ]
-  }), []);
+  }));
 
   useEffect(() => {
     const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
@@ -191,9 +191,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
   const wheelInfos = useMemo(() => {
     // Nếu là Rolls Royce, sử dụng bộ tọa độ riêng biệt để dễ chỉnh sửa
     if (folder === 'rolls_royce') {
-      const suspensionStiffness = 150;
-      const dampingRelaxation = 6;
-      const dampingCompression = 6;
+      const { suspensionStiffness, dampingRelaxation, dampingCompression } = config;
       return [
         { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
         { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
@@ -204,12 +202,12 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
     // Các xe khác vẫn dùng công thức chung dựa trên vehicleConfigs
     return [
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [-0.45, 0,  0.821], isFrontWheel: false },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [ 0.45, 0,  0.821], isFrontWheel: false },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, fO], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, fO], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, bO], isFrontWheel: false },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, bO], isFrontWheel: false },
     ];
-  }, [folder]);
+  }, [folder, config, oW, wheelY, fO, bO]);
 
   const wheel0 = useRef(null);
   const wheel1 = useRef(null);
@@ -224,7 +222,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
     indexForwardAxis: 2,
     indexRightAxis: 0,
     indexUpAxis: 1,
-  }), [folder]);
+  }));
 
 
   // --- Models ---
@@ -562,7 +560,7 @@ const Helicopter = ({ lastPos, lastRot }) => {
       { type: 'Sphere', position: [0, 0.6, -1.3], args: [0.5] },
       { type: 'Sphere', position: [0, 0.6, 1.3], args: [0.5] }
     ]
-  }), []);
+  }));
 
   const hovering = useRef(false);
   const velocity = useRef([0, 0, 0]);
@@ -665,7 +663,7 @@ const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation =
     rotation,
     collisionFilterGroup: hasPhysics ? 1 : 0,
     collisionFilterMask: hasPhysics ? 1 : 0,
-  }), []);
+  }));
   
   if (!hasPhysics) {
     return <primitive object={scene.clone()} position={position} scale={scale} rotation={rotation} />;
@@ -729,7 +727,7 @@ const TrimeshCollider = ({ vertices, indices, position, rotation }) => {
     position,
     rotation,
     args: [vertices, indices],
-  }), [vertices, indices]);
+  }));
   return <mesh ref={ref} />;
 };
 
