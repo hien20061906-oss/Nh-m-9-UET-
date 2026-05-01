@@ -76,7 +76,7 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
     collisionFilterGroup: 0,
     collisionFilterMask: 0,
     args: [radius, radius, width, 16],
-  }), ref, []);
+  }), []);
 
   return (
     <mesh ref={ref}>
@@ -174,7 +174,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
       { type: 'Sphere', position: [0, 0.3,  0.6], args: [0.4] }, // Mũi xe
       { type: 'Sphere', position: [0, 0.3, -0.6], args: [0.4] }  // Đuôi xe
     ]
-  }), chassisRef, []);
+  }), []);
 
   useEffect(() => {
     const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
@@ -224,7 +224,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
     indexForwardAxis: 2,
     indexRightAxis: 0,
     indexUpAxis: 1,
-  }), vehicle, [folder]);
+  }), [folder]);
 
 
   // --- Models ---
@@ -562,7 +562,7 @@ const Helicopter = ({ lastPos, lastRot }) => {
       { type: 'Sphere', position: [0, 0.6, -1.3], args: [0.5] },
       { type: 'Sphere', position: [0, 0.6, 1.3], args: [0.5] }
     ]
-  }), ref, []);
+  }), []);
 
   const hovering = useRef(false);
   const velocity = useRef([0, 0, 0]);
@@ -665,7 +665,7 @@ const MapObject = ({ filename, position, args = [2, 2, 2], scale = 1, rotation =
     rotation,
     collisionFilterGroup: hasPhysics ? 1 : 0,
     collisionFilterMask: hasPhysics ? 1 : 0,
-  }), ref, []);
+  }), []);
   
   if (!hasPhysics) {
     return <primitive object={scene.clone()} position={position} scale={scale} rotation={rotation} />;
@@ -729,7 +729,7 @@ const TrimeshCollider = ({ vertices, indices, position, rotation }) => {
     position,
     rotation,
     args: [vertices, indices],
-  }), ref, [vertices, indices]);
+  }), [vertices, indices]);
   return <mesh ref={ref} />;
 };
 
