@@ -360,8 +360,9 @@ const Car = ({ folder, lastPos, lastRot }) => {
       chassisApi.linearDamping.set(0.95);
       chassisApi.angularDamping.set(1.0);
     } else if (!forward && !backward) {
-      // Auto-brake tỉ lệ theo khối lượng để dừng xe nặng
-      const autoBrake = 15 * ((config.mass || 150) / 150); 
+      // Nhả ga: Để xe trôi tự nhiên (bánh sau vẫn xoay theo đà)
+      // Chỉ phanh nhẹ khi tốc độ đã rất thấp để xe dừng hẳn
+      const autoBrake = speed < 1.0 ? 15 * ((config.mass || 150) / 150) : 0; 
       vehicleApi.setBrake(0, 0);
       vehicleApi.setBrake(0, 1);
       vehicleApi.setBrake(autoBrake, 2);
