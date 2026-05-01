@@ -571,6 +571,10 @@ const Helicopter = ({ lastPos, lastRot }) => {
     const unsubPos = api.position.subscribe(v => { lastPos.current = v; });
     const unsubRot = api.rotation.subscribe(v => { lastRot.current = v; });
     const unsubVel = api.velocity.subscribe(v => { velocity.current = v; });
+    
+    // Đánh thức ngay lập tức khi vừa xuất hiện
+    api.wakeUp();
+    
     return () => { unsubPos(); unsubRot(); unsubVel(); };
   }, [api, lastPos, lastRot]);
 
@@ -580,24 +584,21 @@ const Helicopter = ({ lastPos, lastRot }) => {
     const { forward, backward, left, right, up, down, yawLeft, yawRight } = controls.current;
     const dt = Math.min(delta, 0.05);
 
-    // Xử lý giữ nguyên độ cao (Hover)
-    if (!up && !down) {
-      if (!hovering.current) {
-        // Vừa nhả phím: Khóa cứng trục Y (tắt hẳn trọng lực) và dừng ngay lập tức
-        api.linearFactor.set(1, 0, 1);
-        api.velocity.set(velocity.current[0], 0, velocity.current[2]);
-        hovering.current = true;
-      }
+    // Xử lý cất cánh và bay lên/xuống
+    const climbForce = 15000;
+    const gravityCounter = 500 * 9.81; // Đối trọng lại trọng lực để bay lơ lửng
+
+    if (up) {
+      api.applyLocalForce([0, climbForce, 0], [0, 0, 0]);
+      api.wakeUp();
+    } else if (down) {
+      api.applyLocalForce([0, -5000, 0], [0, 0, 0]);
+      api.wakeUp();
     } else {
-      if (hovering.current) {
-        // Vừa bấm phím: Mở khóa trục Y để bay lên/xuống bình thường
-        api.linearFactor.set(1, 1, 1);
-        hovering.current = false;
-      }
-      
-      const climbForce = 15000; // Lực nâng đủ lớn để thắng trọng lực và bay vút lên
-      if (up) { api.applyLocalForce([0, climbForce, 0], [0, 0, 0]); api.wakeUp(); }
-      if (down) { api.applyLocalForce([0, -5000, 0], [0, 0, 0]); api.wakeUp(); } // Trọng lực tự kéo xuống một phần, cộng thêm lực này để rơi nhanh hơn
+      // Chế độ Hover ổn định: Dùng lực đẩy bằng trọng lượng để giữ độ cao
+      // và dùng damping để triệt tiêu vận tốc dư thừa
+      api.applyForce([0, gravityCounter, 0], [0, 0, 0]);
+      api.velocity.set(velocity.current[0], velocity.current[1] * 0.95, velocity.current[2]);
     }
 
     const moveForce = 5000;
