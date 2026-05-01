@@ -4,6 +4,7 @@ import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCo
 import * as THREE from 'three';
 import { useGLTF } from '@react-three/drei';
 import { threeToCannon, ShapeType } from 'three-to-cannon';
+import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
 
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
 function usePlayerControls() {
@@ -804,6 +805,7 @@ export default function App() {
   const [showMenu, setShowMenu] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [debug, setDebug] = useState(false);
+  const [weather, setWeather] = useState(WEATHER_PRESETS.sunny);
   
   // Hệ thống vàng và xe đã mở khóa
   const [gold, setGold] = useState(10000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
@@ -851,7 +853,7 @@ export default function App() {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: '#FF7A2F', margin: 0, padding: 0, overflow: 'hidden', position: 'relative', fontFamily: 'Arial, sans-serif' }}>
+    <div style={{ width: '100vw', height: '100vh', background: `linear-gradient(to bottom, ${weather.skyTop}, ${weather.skyBottom})`, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', fontFamily: 'Arial, sans-serif' }}>
       <style>{`
         * { margin:0; padding:0; box-sizing:border-box; }
         body { overflow:hidden; }
@@ -1336,13 +1338,14 @@ export default function App() {
 
       {/* Removed heli-controls */}
 
-      <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: '#f0905a' }}>
-        <fog attach="fog" args={['#FF7A2F', 40, 200]} />
-        <ambientLight intensity={1.2} color="#fff0e0" />
-        <directionalLight position={[10, 20, 10]} intensity={1.5} color="#ffe0c0" />
-        <directionalLight position={[-10, 10, -10]} intensity={0.5} color="#ffcc88" />
+      <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: 'transparent' }}>
+        <Environment weather={weather} />
+        <ambientLight intensity={weather.ambientIntensity} color={weather.ambientColor} />
+        <directionalLight position={[10, 20, 10]} intensity={weather.sunIntensity} color={weather.sunColor} />
+        <directionalLight position={[-10, 10, -10]} intensity={weather.sunIntensity * 0.3} color={weather.sunColor} />
         <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
       </Canvas>
+      <WeatherPanel weather={weather} setWeather={setWeather} />
       <MobileControls vehicleFolder={vehicleFolder} />
     </div>
   );
