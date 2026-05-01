@@ -158,7 +158,7 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
   // Sử dụng useCompoundBody để tạo 2 lớp vật lý cho xe
   const [chassisRef, chassisApi] = useCompoundBody(() => ({
-    mass: config.mass || 150, 
+    mass: 300, 
     position: lastPos.current,
     rotation: lastRot.current,
     velocity: [0, 0, 0], 
@@ -191,7 +191,9 @@ const Car = ({ folder, lastPos, lastRot }) => {
   const wheelInfos = useMemo(() => {
     // Nếu là Rolls Royce, sử dụng bộ tọa độ riêng biệt để dễ chỉnh sửa
     if (folder === 'rolls_royce') {
-      const { suspensionStiffness, dampingRelaxation, dampingCompression } = config;
+      const suspensionStiffness = 150;
+      const dampingRelaxation = 6;
+      const dampingCompression = 6;
       return [
         { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
         { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness, dampingRelaxation, dampingCompression, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
@@ -202,12 +204,12 @@ const Car = ({ folder, lastPos, lastRot }) => {
 
     // Các xe khác vẫn dùng công thức chung dựa trên vehicleConfigs
     return [
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, fO], isFrontWheel: true },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, fO], isFrontWheel: true },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, bO], isFrontWheel: false },
-      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [ oW, wheelY, bO], isFrontWheel: false },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [-0.45, 0, -1.145], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [ 0.45, 0, -1.145], isFrontWheel: true },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [-0.45, 0,  0.821], isFrontWheel: false },
+      { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: 150, dampingRelaxation: 6, dampingCompression: 6, chassisConnectionPointLocal: [ 0.45, 0,  0.821], isFrontWheel: false },
     ];
-  }, [folder, config, oW, wheelY, fO, bO]);
+  }, [folder]);
 
   const wheel0 = useRef(null);
   const wheel1 = useRef(null);
