@@ -1,10 +1,8 @@
 import React, { useContext } from 'react';
-import { RaceContext, RACE_STATES, RaceTimerContext } from './RaceManager';
+import { RaceContext, RACE_STATES } from './RaceManager';
 
 const RaceUI = () => {
   const race = useContext(RaceContext);
-  const { currentTime } = useContext(RaceTimerContext);
-  
   if (!race || race.raceState === RACE_STATES.IDLE) return null;
 
   const formatTime = (time) => {
@@ -60,7 +58,7 @@ const RaceUI = () => {
         <div style={{ textAlign: 'center' }}>
           <div style={{ fontSize: '12px', opacity: 0.7, textTransform: 'uppercase', letterSpacing: '2px' }}>Current</div>
           <div style={{ fontSize: '32px', fontWeight: '700', fontVariantNumeric: 'tabular-nums' }}>
-            {formatTime(currentTime)}
+            {formatTime(race.currentTime)}
           </div>
         </div>
 

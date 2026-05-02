@@ -239,17 +239,13 @@ const RaceTrack = ({
   sensorRadius = 8, 
   uiScale = 1.0, 
   sensorRotation = 0,
-  finishOffset = null // Thêm prop vạch đích
+  finishOffset = null 
 }) => {
   const { scene } = useGLTF('/models/map/race_track.glb');
   const { raceState } = useContext(RaceContext);
   
-  const [physData, setPhysData] = useState(null);
-  
-  // ... (giữ nguyên logic useEffect load model)
-
-  useEffect(() => {
-    if (!scene) return;
+  const physData = useMemo(() => {
+    if (!scene) return null;
 
     const v = [];
     const idx = [];
@@ -258,30 +254,21 @@ const RaceTrack = ({
       if (child.isMesh) {
         const name = child.name.toLowerCase();
         
-        // Luôn hiện tất cả các mesh để thấy mặt đường và trang trí
         child.visible = true;
         child.castShadow = true;
         child.receiveShadow = true;
 
-        // Lọc tất cả các vật thể cần có va chạm (Hàng rào, Tường, và cả MẶT ĐƯỜNG)
-        const isPhysicsObject = name.startsWith('ref') || 
-                                name.includes('rail') || 
-                                name.includes('fence') || 
-                                name.includes('wall') ||
-                                name.includes('circuit') ||
-                                name.includes('guard') ||
-                                name.includes('barri') ||
-                                name.includes('road') ||
-                                name.includes('asphalt') ||
-                                name.includes('floor') ||
-                                name.includes('ground') ||
-                                name.includes('track');
+        const isCorePhysics = name.includes('road') || 
+                              name.includes('track') || 
+                              name.includes('wall') || 
+                              name.includes('rail') ||
+                              name.includes('fence') ||
+                              name.includes('circuit');
         
-        if (isPhysicsObject) {
+        if (isCorePhysics) {
           const geom = child.geometry;
           const posAttr = geom.attributes.position;
           if (posAttr) {
-            // Lấy ma trận cục bộ của mesh đối với gốc của model GLB
             child.updateMatrixWorld(true);
             const matrix = child.matrixWorld.clone();
             const worldToLocal = scene.matrixWorld.clone().invert();
@@ -290,7 +277,6 @@ const RaceTrack = ({
             for (let i = 0; i < posAttr.count; i++) {
               const vertex = new THREE.Vector3().fromBufferAttribute(posAttr, i);
               vertex.applyMatrix4(matrix);
-              // Scale tọa độ theo yêu cầu người dùng
               v.push(vertex.x * scale, vertex.y * scale, vertex.z * scale);
             }
 
@@ -309,19 +295,16 @@ const RaceTrack = ({
       }
     });
 
-    if (v.length > 0) {
-      setPhysData({
-        vertices: new Float32Array(v),
-        indices: new Uint32Array(idx)
-      });
-    }
+    return v.length > 0 ? {
+      vertices: new Float32Array(v),
+      indices: new Uint32Array(idx)
+    } : null;
   }, [scene, scale]);
 
   return (
     <group position={position} scale={[scale, scale, scale]}>
       <primitive object={scene} />
       
-      {/* Chỉ kích hoạt vật lý khi đã load xong dữ liệu model */}
       {physData && (
         <PhysicsTrack 
           vertices={physData.vertices} 
