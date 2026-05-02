@@ -432,12 +432,14 @@ const Car = ({ folder, lastPos, lastRot, controls }) => {
 
   return (
     <group ref={vehicle}>
-      <mesh ref={chassisRef} castShadow>
-        <meshStandardMaterial visible={false} />
-        <group position={[0, chassisY, 0]} rotation={[0, Math.PI / 2, 0]}>
-          <primitive object={chassisScene} />
-        </group>
-      </mesh>
+      <group ref={chassisRef} name="chassis-body-visual">
+        <mesh castShadow>
+          <meshStandardMaterial visible={false} />
+          <group position={[0, chassisY, 0]} rotation={[0, Math.PI / 2, 0]}>
+            <primitive object={chassisScene} />
+          </group>
+        </mesh>
+      </group>
 
       <Wheel ref={wheel0} radius={wheelRadius} width={wheelHeight} leftSide={true}  folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
       <Wheel ref={wheel1} radius={wheelRadius} width={wheelHeight} leftSide={false} folder={folder === 'ship' ? 'default' : folder} visible={folder !== 'ship'} />
@@ -756,12 +758,13 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const lastPos = useRef([0, 0, 0]);
   const lastRot = useRef([0, 0, 0]);
 
+  // Tọa độ dịch chuyển xe vào đường đua (Bạn có thể chỉnh ở đây)
+  const teleportPos = [180, 1, -300];
+
   const teleportToTrack = () => {
-    const trackPos = [180, 1, -300]; // Vị trí vạch xuất phát (khớp với vị trí RaceTrack)
-    chassisApi.position.set(...trackPos);
+    chassisApi.position.set(...teleportPos);
     chassisApi.velocity.set(0, 0, 0);
     chassisApi.angularVelocity.set(0, 0, 0);
-    // Reset hướng xe nhìn thẳng theo đường đua
     chassisApi.rotation.set(0, 0, 0);
   };
 
@@ -782,7 +785,11 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
       <RaceTrack 
         position={[180, 0, -300]} 
         scale={0.7} 
-        onEnterTrack={teleportToTrack} 
+        onEnterTrack={teleportToTrack}
+        sensorOffset={[-100, 0, 50]}
+        sensorRadius={20}
+        uiScale={2}
+        sensorRotation={-90}
       />
       <Ground />
       <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />

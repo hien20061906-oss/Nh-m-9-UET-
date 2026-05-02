@@ -1,4 +1,5 @@
 import React, { useMemo, useEffect, useContext, useState, useRef } from 'react';
+import { useFrame } from '@react-three/fiber';
 import { useGLTF, Html } from '@react-three/drei';
 import { useTrimesh, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
@@ -47,65 +48,135 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
   );
 };
 
-const StartSensor = ({ position, onEnterTrack, scale = [60, 0.5, 60] }) => {
+const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], uiScale = 1.0, rotation = 0 }) => {
   const { startRace, raceState } = useContext(RaceContext);
   const [isNear, setIsNear] = useState(false);
+  const [carRef, setCarRef] = useState(null);
 
-  // Cảm biến vùng rộng xung quanh đường đua (mỏng sát đất)
-  const [ref] = useBox(() => ({
-    isSensor: true,
-    position: [position[0], position[1] + 0.25, position[2]],
-    args: scale,
-    onCollide: (e) => {
-      if (e.body.name === 'chassis-body') setIsNear(true);
-    },
-    onCollideEnd: (e) => {
-      if (e.body.name === 'chassis-body') setIsNear(false);
+  useFrame((state) => {
+    if (raceState !== 'IDLE') return;
+    
+    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!car) return;
+    if (!carRef) setCarRef(car);
+
+    // Ép cập nhật ma trận để lấy tọa độ chính xác tuyệt đối
+    car.updateWorldMatrix(true, false);
+    const carPos = new THREE.Vector3();
+    car.getWorldPosition(carPos);
+
+    const trackPos = new THREE.Vector3(
+      position[0] + offset[0],
+      position[1] + offset[1],
+      position[2] + offset[2]
+    );
+    
+    const dist = carPos.distanceTo(trackPos);
+
+    if (dist < radius && !isNear) {
+      console.log(`ĐÃ VÀO VÙNG ĐUA: Khoảng cách ${dist.toFixed(2)} < Bán kính ${radius}`);
+      setIsNear(true);
     }
-  }));
+    if (dist >= radius && isNear) {
+      setIsNear(false);
+    }
+  });
 
   const handleStart = () => {
-    onEnterTrack?.(); // Dịch chuyển xe vào vạch xuất phát
-    startRace();     // Bắt đầu đếm ngược
+    onEnterTrack?.();
+    startRace();
   };
 
   return (
     <group>
-      <mesh ref={ref} visible={false} />
-      {isNear && raceState === 'IDLE' && (
-        <Html position={[0, 10, 0]} center>
-          <div style={{
-            background: 'rgba(0,0,0,0.85)',
-            color: 'white',
-            padding: '20px 30px',
-            borderRadius: '20px',
-            border: '2px solid #00ff88',
-            boxShadow: '0 0 20px rgba(0,255,136,0.5)',
-            fontFamily: 'sans-serif',
-            textAlign: 'center',
-            width: '250px',
-            pointerEvents: 'auto'
-          }}>
-            <p style={{ margin: '0 0 15px 0', fontSize: '18px', fontWeight: 'bold' }}>🏎️ ĐƯỜNG ĐUA MINI</p>
-            <button 
-              onClick={handleStart}
-              style={{
-                background: 'linear-gradient(135deg, #00ff88 0%, #00bd65 100%)',
-                border: 'none',
-                padding: '12px 25px',
-                borderRadius: '10px',
-                color: 'white',
-                fontWeight: 'bold',
-                fontSize: '16px',
-                cursor: 'pointer',
-                boxShadow: '0 4px 10px rgba(0,0,0,0.3)'
-              }}
+      {/* Biển báo Billboard 2 cột cắm dưới đất */}
+      {raceState === 'IDLE' && (
+        <group 
+          position={[offset[0], offset[1], offset[2]]} 
+          rotation={[0, rotation * (Math.PI / 180), 0]}
+        >
+          {/* Hai cột trụ 2 bên */}
+          <mesh position={[-2, 1.5, 0]}>
+            <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
+            <meshStandardMaterial color="#333" />
+          </mesh>
+          <mesh position={[2, 1.5, 0]}>
+            <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
+            <meshStandardMaterial color="#333" />
+          </mesh>
+          
+          {/* Vòng tròn nhận diện dưới đất */}
+          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+            <ringGeometry args={[radius - 0.5, radius, 64]} />
+            <meshBasicMaterial color="#00ff88" transparent opacity={0.15} side={THREE.DoubleSide} />
+          </mesh>
+
+          {/* Cấu trúc Bảng hiệu chính */}
+          <group position={[0, 3, 0]}>
+            {/* Khung bảng */}
+            <mesh>
+              <boxGeometry args={[4.5, 3, 0.3]} />
+              <meshStandardMaterial color="#111" />
+            </mesh>
+            
+            {/* Mặt bảng phát sáng */}
+            <mesh position={[0, 0, 0.16]}>
+              <boxGeometry args={[4.2, 2.7, 0.05]} />
+              <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.2} transparent opacity={0.9} />
+            </mesh>
+
+            {/* Chữ RACE dính vào bảng */}
+            <Html 
+              transform 
+              distanceFactor={3.5} 
+              position={[0, 0.5, 0.2]}
+              pointerEvents="none"
             >
-              VÀO ĐƯỜNG ĐUA (E)
-            </button>
-            <p style={{ fontSize: '12px', marginTop: '10px', opacity: 0.7 }}>Ấn để tự động đưa xe vào vạch</p>
-          </div>
-        </Html>
+              <div style={{
+                color: 'black',
+                fontFamily: '"Arial Black", sans-serif',
+                textAlign: 'center',
+                width: '400px',
+                userSelect: 'none'
+              }}>
+                <h1 style={{ margin: 0, fontSize: '60px', letterSpacing: '5px' }}>RACE</h1>
+                <div style={{ background: 'black', color: '#00ff88', padding: '5px', fontSize: '15px', fontWeight: 'bold' }}>
+                  ENTRY POINT
+                </div>
+              </div>
+            </Html>
+
+            {/* Nút bấm cũng biến thành 3D nằm trên bảng */}
+            {isNear && (
+              <Html 
+                transform
+                distanceFactor={3.5} 
+                position={[0, -0.8, 0.22]}
+              >
+                <div 
+                  onClick={handleStart}
+                  style={{
+                    background: '#00ff88',
+                    color: 'black',
+                    padding: '15px 30px',
+                    borderRadius: '50px',
+                    fontWeight: 'bold',
+                    fontSize: '24px',
+                    cursor: 'pointer',
+                    boxShadow: '0 0 30px #00ff88',
+                    border: '4px solid black',
+                    transition: 'all 0.2s',
+                    transform: `scale(${uiScale})`
+                  }}
+                  onMouseOver={(e) => e.currentTarget.style.transform = `scale(${uiScale * 1.1})`}
+                  onMouseOut={(e) => e.currentTarget.style.transform = `scale(${uiScale})`}
+                >
+                  VÀO ĐUA NGAY (E)
+                </div>
+              </Html>
+            )}
+          </group>
+        </group>
       )}
     </group>
   );
@@ -121,7 +192,7 @@ const PhysicsTrack = ({ vertices, indices, position }) => {
   return null;
 };
 
-const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack }) => {
+const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack, sensorOffset = [0, 0, 0], sensorRadius = 8, uiScale = 1.0, sensorRotation = 0 }) => {
   const { scene } = useGLTF('/models/map/race_track.glb');
   const { raceState } = useContext(RaceContext);
   
@@ -204,7 +275,7 @@ const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack }) => {
         />
       )}
 
-      <StartSensor position={[0, 0, 0]} onEnterTrack={onEnterTrack} />
+      <StartSensor position={position} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
 
       {raceState !== 'IDLE' && (
         <>
