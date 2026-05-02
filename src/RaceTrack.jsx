@@ -313,10 +313,10 @@ const RaceTrack = ({
         />
       )}
 
-      <StartSensor position={position} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
+      <StartSensor position={[0, 0, 0]} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
       
       {/* Cảm biến vạch đích */}
-      {finishOffset && <FinishSensor position={position} offset={finishOffset} />}
+      {finishOffset && <FinishSensor position={[0, 0, 0]} offset={finishOffset} />}
 
       {raceState !== 'IDLE' && (
         <>
