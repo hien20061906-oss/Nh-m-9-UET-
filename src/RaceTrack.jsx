@@ -150,11 +150,13 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
           <meshStandardMaterial color="#333" />
         </mesh>
         
-        {/* Vòng tròn nhận diện dưới đất */}
-        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
-          <ringGeometry args={[radius - 0.5, radius, 64]} />
-          <meshBasicMaterial color="#00ff88" transparent opacity={0.15} side={THREE.DoubleSide} />
-        </mesh>
+        {/* Vòng tròn nhận diện (Đã ẩn theo yêu cầu) */}
+        <group position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
+          <mesh>
+            <ringGeometry args={[radius - 0.2, radius, 64]} />
+            <meshBasicMaterial color="#00ff88" transparent opacity={0} side={THREE.DoubleSide} />
+          </mesh>
+        </group>
 
         {/* Cấu trúc Bảng hiệu chính */}
         <group position={[0, 3, 0]}>
@@ -228,6 +230,173 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
     </>
   );
 };
+
+const LeaderboardBoard = ({ position, rotation = 0 }) => {
+  const { leaderboard } = useContext(RaceContext);
+
+  return (
+    <group position={position} rotation={[0, rotation * (Math.PI / 180), 0]}>
+      {/* Khung chính - Kim loại đen nhám */}
+      <mesh position={[0, 2.5, 0]}>
+        <boxGeometry args={[6.2, 5.2, 0.3]} />
+        <meshStandardMaterial color="#0a0a0a" metalness={0.8} roughness={0.2} />
+      </mesh>
+      
+      {/* Màn hình - Hiệu ứng kính Neon */}
+      <mesh position={[0, 2.5, 0.16]}>
+        <boxGeometry args={[5.8, 4.8, 0.05]} />
+        <meshStandardMaterial 
+          color="#001a1a" 
+          emissive="#003333" 
+          emissiveIntensity={1} 
+          transparent 
+          opacity={0.9} 
+        />
+      </mesh>
+
+      {/* Khung viền Neon rực rỡ - Tạo từ 4 thanh rỗng để không bị dấu X */}
+      <group position={[0, 2.5, 0.18]}>
+        {/* Thanh trên */}
+        <mesh position={[0, 2.45, 0]}>
+          <boxGeometry args={[6.0, 0.05, 0.01]} />
+          <meshBasicMaterial color="#00ffcc" />
+        </mesh>
+        {/* Thanh dưới */}
+        <mesh position={[0, -2.45, 0]}>
+          <boxGeometry args={[6.0, 0.05, 0.01]} />
+          <meshBasicMaterial color="#00ffcc" />
+        </mesh>
+        {/* Thanh trái */}
+        <mesh position={[-3, 0, 0]}>
+          <boxGeometry args={[0.05, 5.0, 0.01]} />
+          <meshBasicMaterial color="#00ffcc" />
+        </mesh>
+        {/* Thanh phải */}
+        <mesh position={[3, 0, 0]}>
+          <boxGeometry args={[0.05, 5.0, 0.01]} />
+          <meshBasicMaterial color="#00ffcc" />
+        </mesh>
+      </group>
+
+      {/* Nội dung bảng xếp hạng */}
+      <Html 
+        transform 
+        distanceFactor={4} 
+        position={[0, 2.4, 0.22]}
+        style={{ pointerEvents: 'none' }}
+      >
+        <div style={{
+          width: '540px',
+          height: '440px',
+          padding: '30px',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          fontFamily: '"Orbitron", sans-serif',
+          color: '#fff',
+          overflow: 'hidden',
+          position: 'relative'
+        }}>
+          {/* Scanline Effect */}
+          <div style={{
+            position: 'absolute',
+            top: 0, left: 0, right: 0, bottom: 0,
+            background: 'linear-gradient(rgba(18, 16, 16, 0) 50%, rgba(0, 0, 0, 0.25) 50%), linear-gradient(90deg, rgba(255, 0, 0, 0.06), rgba(0, 255, 0, 0.02), rgba(0, 0, 255, 0.06))',
+            backgroundSize: '100% 4px, 3px 100%',
+            pointerEvents: 'none',
+            zIndex: 10
+          }} />
+
+          <h2 style={{
+            fontSize: '32px',
+            margin: '0 0 25px 0',
+            color: '#00ffcc',
+            fontFamily: '"Orbitron", sans-serif',
+            textShadow: '0 0 15px #00ffcc',
+            letterSpacing: '4px',
+            textTransform: 'uppercase',
+            fontWeight: 'bold'
+          }}>
+            Bảng Xếp Hạng
+          </h2>
+
+          <div style={{ width: '100%', flex: 1 }}>
+            {leaderboard.map((entry, i) => (
+              <div key={i} style={{ 
+                display: 'flex', 
+                alignItems: 'center',
+                padding: '12px 15px',
+                marginBottom: '6px',
+                background: i === 0 ? 'rgba(0, 255, 204, 0.15)' : 'rgba(255, 255, 255, 0.03)',
+                borderRadius: '4px',
+                borderLeft: `4px solid ${i === 0 ? '#ffcc00' : (i < 3 ? '#00ffcc' : '#444')}`,
+                fontSize: '20px',
+                animation: `fadeIn 0.5s ease-out forwards ${i * 0.1}s`
+              }}>
+                <span style={{ width: '40px', fontWeight: 'bold', color: i < 3 ? '#00ffcc' : '#888' }}>
+                  {i + 1}.
+                </span>
+                <div style={{ 
+                  width: '30px', 
+                  height: '30px', 
+                  background: '#222', 
+                  borderRadius: '50%', 
+                  display: 'flex', 
+                  alignItems: 'center', 
+                  justifyContent: 'center',
+                  marginRight: '15px',
+                  border: `1px solid ${i < 3 ? '#00ffcc' : '#444'}`,
+                  overflow: 'hidden'
+                }}>
+                  {entry.avatar && entry.avatar.length > 5 ? (
+                    <img src={entry.avatar} style={{ width: '100%', height: '100%', objectFit: 'cover' }} alt="avt" />
+                  ) : (
+                    <span style={{ fontSize: '16px' }}>{entry.avatar || '👤'}</span>
+                  )}
+                </div>
+                <span style={{ flex: 1, fontWeight: '600', letterSpacing: '1px', fontSize: '18px' }}>
+                  {entry.name}
+                </span>
+                <span style={{ color: '#00ffcc', fontWeight: 'bold', textShadow: '0 0 10px rgba(0,255,204,0.5)' }}>
+                  {entry.time.toFixed(3)}s
+                </span>
+              </div>
+            ))}
+          </div>
+
+          <div style={{ marginTop: '15px', fontSize: '12px', color: '#444', letterSpacing: '2px' }}>
+            SYSTEM ONLINE // DATA SYNCED
+          </div>
+
+          <style>{`
+            @keyframes fadeIn {
+              from { opacity: 0; transform: translateX(-10px); }
+              to { opacity: 1; transform: translateX(0); }
+            }
+          `}</style>
+        </div>
+      </Html>
+
+      {/* Đèn chiếu từ dưới lên */}
+      <pointLight position={[0, 0.5, 1]} color="#00ffcc" intensity={2} distance={5} />
+
+      {/* Chân đế công nghệ cao */}
+      <mesh position={[0, 0.1, 0]}>
+        <boxGeometry args={[4, 0.2, 1.5]} />
+        <meshStandardMaterial color="#111" />
+      </mesh>
+      <mesh position={[-1.5, 1, 0]}>
+        <cylinderGeometry args={[0.1, 0.1, 2]} />
+        <meshStandardMaterial color="#222" />
+      </mesh>
+      <mesh position={[1.5, 1, 0]}>
+        <cylinderGeometry args={[0.1, 0.1, 2]} />
+        <meshStandardMaterial color="#222" />
+      </mesh>
+    </group>
+  );
+};
+
 
 const PhysicsTrack = ({ vertices, indices, position }) => {
   // Thành phần này chỉ được gọi khi đã có đủ dữ liệu vertices
@@ -325,6 +494,12 @@ const RaceTrack = ({
       
       {/* Cảm biến vạch đích */}
       {finishOffset && <FinishSensor position={position} offset={finishOffset} />}
+
+      {/* Bảng thành tích đặt cạnh vạch xuất phát */}
+      <LeaderboardBoard 
+        position={[sensorOffset[0] - 10, 0, sensorOffset[2] - 5]} 
+        rotation={sensorRotation + 90} 
+      />
 
       {raceState !== 'IDLE' && (
         <>

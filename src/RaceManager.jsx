@@ -12,9 +12,28 @@ export const RaceContext = createContext();
 
 const RaceManager = ({ children }) => {
   const [raceState, setRaceState] = useState(RACE_STATES.IDLE);
-  const [bestTime, setBestTime] = useState(parseFloat(localStorage.getItem('race_best_time')) || null);
+  const [leaderboard, setLeaderboard] = useState(() => {
+    try {
+      const saved = localStorage.getItem('race_leaderboard');
+      return saved ? JSON.parse(saved) : [
+        { name: 'CHAMPION', time: 25.42, avatar: '👤' },
+        { name: 'SPEEDSTER', time: 28.15, avatar: '⚡' },
+        { name: 'DRIFTER', time: 31.05, avatar: '🔥' }
+      ];
+    } catch (e) {
+      console.error('Leaderboard parse error:', e);
+      return [
+        { name: 'CHAMPION', time: 25.42, avatar: '👤' },
+        { name: 'SPEEDSTER', time: 28.15, avatar: '⚡' },
+        { name: 'DRIFTER', time: 31.05, avatar: '🔥' }
+      ];
+    }
+  });
+  const [bestTime, setBestTime] = useState(leaderboard[0]?.time || null);
   const [countdown, setCountdown] = useState(null);
   const [currentCheckpoint, setCurrentCheckpoint] = useState(-1);
+  const [playerName, setPlayerName] = useState('PLAYER');
+  const [playerAvatar, setPlayerAvatar] = useState('👤');
   const startTime = useRef(0);
   const currentTimeRef = useRef(0);
   
@@ -27,7 +46,6 @@ const RaceManager = ({ children }) => {
   });
 
   const finishRace = useCallback(() => {
-    // Chỉ cho phép kết thúc nếu đang trong trạng thái RUNNING
     setRaceState(prev => {
       if (prev !== RACE_STATES.RUNNING) return prev;
       
@@ -37,13 +55,21 @@ const RaceManager = ({ children }) => {
       sounds.current.finish.play();
       sounds.current.applause.play();
       
+      // Cập nhật bảng xếp hạng với tên và avatar hiện tại
+      setLeaderboard(prevList => {
+        const newList = [...prevList, { name: playerName, time: finalTime, avatar: playerAvatar }]
+          .sort((a, b) => a.time - b.time)
+          .slice(0, 10);
+        localStorage.setItem('race_leaderboard', JSON.stringify(newList));
+        return newList;
+      });
+
       if (!bestTime || finalTime < bestTime) {
         setBestTime(finalTime);
-        localStorage.setItem('race_best_time', finalTime.toString());
       }
       return RACE_STATES.FINISHED;
     });
-  }, [bestTime]);
+  }, [bestTime, playerName, playerAvatar]);
 
   const startRace = useCallback(() => {
     setRaceState(RACE_STATES.COUNTDOWN);
@@ -89,6 +115,11 @@ const RaceManager = ({ children }) => {
     currentTimeRef,
     startTime,
     bestTime,
+    leaderboard,
+    playerName,
+    setPlayerName,
+    playerAvatar,
+    setPlayerAvatar,
     countdown,
     currentCheckpoint,
     startRace,
