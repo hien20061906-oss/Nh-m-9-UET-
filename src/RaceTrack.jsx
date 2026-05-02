@@ -158,17 +158,17 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
                   style={{
                     background: '#00ff88',
                     color: 'black',
-                    padding: '15px 30px',
+                    padding: '10px 20px',
                     borderRadius: '50px',
                     fontWeight: 'bold',
-                    fontSize: '24px',
+                    fontSize: '18px',
                     cursor: 'pointer',
-                    boxShadow: '0 0 30px #00ff88',
-                    border: '4px solid black',
+                    boxShadow: '0 0 20px #00ff88',
+                    border: '2px solid black',
                     transition: 'all 0.2s',
                     transform: `scale(${uiScale})`
                   }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = `scale(${uiScale * 1.1})`}
+                  onMouseOver={(e) => e.currentTarget.style.transform = `scale(${uiScale * 1.05})`}
                   onMouseOut={(e) => e.currentTarget.style.transform = `scale(${uiScale})`}
                 >
                   VÀO ĐUA NGAY (E)

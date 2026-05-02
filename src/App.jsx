@@ -184,7 +184,22 @@ const Car = ({ folder, lastPos, lastRot, controls }) => {
   useEffect(() => {
     const unsubPos = chassisApi.position.subscribe(v => { lastPos.current = v; });
     const unsubRot = chassisApi.rotation.subscribe(v => { lastRot.current = v; });
-    return () => { unsubPos(); unsubRot(); };
+    
+    // Lắng nghe lệnh dịch chuyển xe
+    const handleTeleport = (e) => {
+      const { position } = e.detail;
+      chassisApi.position.set(...position);
+      chassisApi.velocity.set(0, 0, 0);
+      chassisApi.angularVelocity.set(0, 0, 0);
+      chassisApi.rotation.set(0, 0, 0);
+    };
+    window.addEventListener('teleport-vehicle', handleTeleport);
+
+    return () => { 
+      unsubPos(); 
+      unsubRot(); 
+      window.removeEventListener('teleport-vehicle', handleTeleport);
+    };
   }, [chassisApi, lastPos, lastRot]);
 
   // --- Hệ thống treo CÂN BẰNG ---
@@ -762,10 +777,9 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const teleportPos = [180, 1, -300];
 
   const teleportToTrack = () => {
-    chassisApi.position.set(...teleportPos);
-    chassisApi.velocity.set(0, 0, 0);
-    chassisApi.angularVelocity.set(0, 0, 0);
-    chassisApi.rotation.set(0, 0, 0);
+    // Phát một sự kiện để chiếc xe tự nhận lệnh dịch chuyển
+    const event = new CustomEvent('teleport-vehicle', { detail: { position: teleportPos } });
+    window.dispatchEvent(event);
   };
 
   const contents = (
@@ -787,8 +801,8 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
         scale={0.7} 
         onEnterTrack={teleportToTrack}
         sensorOffset={[-100, 0, 50]}
-        sensorRadius={20}
-        uiScale={2}
+        sensorRadius={100}
+        uiScale={1.2}
         sensorRotation={-90}
       />
       <Ground />
