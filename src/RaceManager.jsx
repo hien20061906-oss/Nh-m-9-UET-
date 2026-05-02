@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useEffect, useRef, useCallback, createContext } from 'react';
 import { useFrame } from '@react-three/fiber';
 
 export const RACE_STATES = {
@@ -7,6 +7,10 @@ export const RACE_STATES = {
   RUNNING: 'RUNNING',
   FINISHED: 'FINISHED',
 };
+
+// Tách riêng 2 Context để tránh re-render toàn bộ map khi đồng hồ chạy
+export const RaceStateContext = createContext(null);
+export const RaceTimerContext = createContext(null);
 
 const RaceManager = ({ children }) => {
   const [raceState, setRaceState] = useState(RACE_STATES.IDLE);
@@ -43,7 +47,7 @@ const RaceManager = ({ children }) => {
         clearInterval(interval);
         setTimeout(() => setCountdown(null), 1000);
       }
-    }, 1500);
+    }, 1000); // Chỉnh về 1 giây cho chuẩn
   }, []);
 
   const finishRace = useCallback(() => {
@@ -60,21 +64,12 @@ const RaceManager = ({ children }) => {
 
   const onCheckpointReached = useCallback((index) => {
     if (raceState !== RACE_STATES.RUNNING) return;
-    
     if (index === currentCheckpoint + 1) {
       setCurrentCheckpoint(index);
       sounds.current.checkpoint.play();
-      
-      // If it's the last checkpoint (assuming index 10 for example, we'll calibrate this)
-      // For now, let's say index 99 is finish
-      if (index === 99) {
-        finishRace();
-      }
+      if (index === 99) finishRace();
     }
   }, [raceState, currentCheckpoint, finishRace]);
-
-  // REMOVED useFrame from here because RaceManager is used outside Canvas
-  // We will use a separate RaceTicker component inside the Canvas instead.
 
   const resetRace = useCallback(() => {
     setRaceState(RACE_STATES.IDLE);
@@ -84,25 +79,28 @@ const RaceManager = ({ children }) => {
   }, []);
 
   return (
-    <RaceContext.Provider value={{
+    <RaceStateContext.Provider value={{
       raceState,
-      currentTime,
-      setCurrentTime, // Export this so RaceTicker can update it
-      startTime,     // Export this too
       bestTime,
       countdown,
       currentCheckpoint,
       startRace,
+      finishRace,
       resetRace,
-      onCheckpointReached
+      onCheckpointReached,
+      startTime // Cần cho RaceTicker
     }}>
-      {children}
-    </RaceContext.Provider>
+      <RaceTimerContext.Provider value={{ currentTime, setCurrentTime }}>
+        {children}
+      </RaceTimerContext.Provider>
+    </RaceStateContext.Provider>
   );
 };
 
 export const RaceTicker = () => {
-  const { raceState, setCurrentTime, startTime } = React.useContext(RaceContext);
+  const { raceState, startTime } = React.useContext(RaceStateContext);
+  const { setCurrentTime } = React.useContext(RaceTimerContext);
+  
   useFrame(() => {
     if (raceState === RACE_STATES.RUNNING) {
       setCurrentTime((performance.now() - startTime.current) / 1000);
@@ -111,5 +109,6 @@ export const RaceTicker = () => {
   return null;
 };
 
-export const RaceContext = React.createContext(null);
+// Giữ lại RaceContext cũ để không làm lỗi các file khác, nhưng sẽ trỏ về RaceStateContext
+export const RaceContext = RaceStateContext;
 export default RaceManager;
