@@ -48,6 +48,37 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
   );
 };
 
+const FinishSensor = ({ position, offset, radius = 5 }) => {
+  const { raceState, finishRace } = useContext(RaceContext);
+  
+  useFrame((state) => {
+    if (raceState !== 'RUNNING') return;
+    
+    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!car) return;
+
+    car.updateWorldMatrix(true, false);
+    const carPos = new THREE.Vector3();
+    car.getWorldPosition(carPos);
+
+    const finishPos = new THREE.Vector3(
+      position[0] + offset[0],
+      position[1] + offset[1],
+      position[2] + offset[2]
+    );
+    
+    const dist = carPos.distanceTo(finishPos);
+
+    // Nếu quay lại điểm xuất phát (teleportPos) và đang đua thì kết thúc
+    if (dist < radius) {
+      console.log("🏁 VỀ ĐÍCH!");
+      finishRace();
+    }
+  });
+
+  return null;
+};
+
 const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], uiScale = 1.0, rotation = 0 }) => {
   const { startRace, raceState } = useContext(RaceContext);
   const [isNear, setIsNear] = useState(false);
@@ -192,11 +223,22 @@ const PhysicsTrack = ({ vertices, indices, position }) => {
   return null;
 };
 
-const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack, sensorOffset = [0, 0, 0], sensorRadius = 8, uiScale = 1.0, sensorRotation = 0 }) => {
+const RaceTrack = ({ 
+  position = [0, 0, 0], 
+  scale = 1.0, 
+  onEnterTrack, 
+  sensorOffset = [0, 0, 0], 
+  sensorRadius = 8, 
+  uiScale = 1.0, 
+  sensorRotation = 0,
+  finishOffset = null // Thêm prop vạch đích
+}) => {
   const { scene } = useGLTF('/models/map/race_track.glb');
   const { raceState } = useContext(RaceContext);
   
   const [physData, setPhysData] = useState(null);
+  
+  // ... (giữ nguyên logic useEffect load model)
 
   useEffect(() => {
     if (!scene) return;
@@ -281,6 +323,9 @@ const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack, sensorOffs
       )}
 
       <StartSensor position={position} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
+      
+      {/* Cảm biến vạch đích */}
+      {finishOffset && <FinishSensor position={position} offset={finishOffset} />}
 
       {raceState !== 'IDLE' && (
         <>

@@ -784,6 +784,7 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
 
   const contents = (
     <>
+      <RaceTicker />
       {vehicleFolder === 'helicopter' ? (
         <Helicopter lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : vehicleFolder === 'ship' ? (
@@ -793,7 +794,8 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
           folder={vehicleFolder} 
           lastPos={lastPos} 
           lastRot={lastRot}
-          controls={controls}
+          // KHÓA ĐIỀU KHIỂN khi đang đếm ngược
+          controls={raceState === 'COUNTDOWN' ? { forward: false, backward: false, left: false, right: false, brake: true, reset: false, shift: false, horn: false } : controls}
         />
       )}
       <RaceTrack 
@@ -804,11 +806,27 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
         sensorRadius={100}
         uiScale={1.2}
         sensorRotation={-90}
+        // Vị trí vạch đích (tính từ tâm đường đua)
+        finishOffset={[-8, 1, 5]} 
       />
       <Ground />
       <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
     </>
   );
+
+  // Tự động đưa xe về Billboard sau khi đua xong
+  useEffect(() => {
+    if (raceState === 'FINISHED') {
+      const timer = setTimeout(() => {
+        // Tọa độ Billboard (Vị trí lúc bạn bắt đầu vào vùng cảm biến)
+        const billboardPos = [180 - 100, 1, -300 + 50]; 
+        chassisApi.position.set(...billboardPos);
+        chassisApi.velocity.set(0, 0, 0);
+        chassisApi.angularVelocity.set(0, 0, 0);
+      }, 3000); // Đợi 3 giây để bạn kịp nhìn thời gian kỷ lục
+      return () => clearTimeout(timer);
+    }
+  }, [raceState, chassisApi]);
 
   return (
     <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
