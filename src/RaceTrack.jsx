@@ -49,11 +49,15 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
 };
 
 const FinishSensor = ({ position, offset, radius = 5 }) => {
-  const { raceState, finishRace } = useContext(RaceContext);
+  const { raceState, finishRace, currentTime } = useContext(RaceContext);
   
   useFrame((state) => {
     if (raceState !== 'RUNNING') return;
     
+    // Chỉ cho phép về đích sau khi đã đua được ít nhất 10 giây 
+    // (Để tránh việc vừa tele vào đã bị tính là về đích luôn)
+    if (currentTime < 10) return;
+
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
 
@@ -69,9 +73,8 @@ const FinishSensor = ({ position, offset, radius = 5 }) => {
     
     const dist = carPos.distanceTo(finishPos);
 
-    // Nếu quay lại điểm xuất phát (teleportPos) và đang đua thì kết thúc
     if (dist < radius) {
-      console.log("🏁 VỀ ĐÍCH!");
+      console.log("🏁 CHÚC MỪNG! BẠN ĐÃ VỀ ĐÍCH!");
       finishRace();
     }
   });
