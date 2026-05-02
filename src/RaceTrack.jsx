@@ -117,8 +117,13 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
   });
 
   const handleStart = () => {
+    // 1. Dịch chuyển xe vào vạch xuất phát NGAY LẬP TỨC
     onEnterTrack?.();
-    startRace();
+    
+    // 2. Đợi 0.1 giây để xe "ổn định" vị trí rồi mới bắt đầu đếm ngược
+    setTimeout(() => {
+      startRace();
+    }, 100);
   };
 
   return (
