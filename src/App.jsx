@@ -767,6 +767,7 @@ const MapWithPhysics = ({ mapFile = 'map.glb', collisionFile = 'map_collision.gl
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
 function Game({ vehicleFolder, setVehicleFolder, debug }) {
+  const { raceState } = useContext(RaceContext); // Thêm dòng này
   const controls = usePlayerControls();
   const lastChange = useRef(false);
   
@@ -784,7 +785,6 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
 
   const contents = (
     <>
-      <RaceTicker />
       {vehicleFolder === 'helicopter' ? (
         <Helicopter lastPos={lastPos} lastRot={lastRot} controls={controls} />
       ) : vehicleFolder === 'ship' ? (
@@ -820,13 +820,13 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
       const timer = setTimeout(() => {
         // Tọa độ Billboard (Vị trí lúc bạn bắt đầu vào vùng cảm biến)
         const billboardPos = [180 - 100, 1, -300 + 50]; 
-        chassisApi.position.set(...billboardPos);
-        chassisApi.velocity.set(0, 0, 0);
-        chassisApi.angularVelocity.set(0, 0, 0);
+        // Gửi tín hiệu dịch chuyển xe về Billboard
+        const event = new CustomEvent('teleport-vehicle', { detail: { position: billboardPos } });
+        window.dispatchEvent(event);
       }, 3000); // Đợi 3 giây để bạn kịp nhìn thời gian kỷ lục
       return () => clearTimeout(timer);
     }
-  }, [raceState, chassisApi]);
+  }, [raceState]);
 
   return (
     <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
