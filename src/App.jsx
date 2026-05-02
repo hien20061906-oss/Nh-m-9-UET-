@@ -1,10 +1,15 @@
-import React, { useState, useEffect, useRef, useMemo } from 'react';
+import React, { useState, useEffect, useRef, useMemo, Suspense } from 'react';
+
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
 import * as THREE from 'three';
-import { useGLTF } from '@react-three/drei';
+import { useGLTF, Html } from '@react-three/drei';
 import { threeToCannon, ShapeType } from 'three-to-cannon';
 import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
+import RaceManager, { RaceContext, RACE_STATES, RaceTicker } from './RaceManager';
+import RaceTrack from './RaceTrack';
+import RaceUI from './RaceUI';
+
 
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
 function usePlayerControls() {
@@ -166,6 +171,7 @@ const Car = ({ folder, lastPos, lastRot, controls }) => {
     linearDamping: 0.2, 
     angularDamping: 0.9, 
     angularFactor: [0, 1, 0],
+    name: 'chassis-body',
     shapes: [
       // Lớp 1 (Gầm xe): Hình hộp mỏng (0.2) nằm sát gầm, giữ chức năng tương tác với mặt đường (Trimesh) mà không bị cạ gầm.
       { type: 'Box', position: [0, 0, 0], rotation: [0, 0, 0], args: [chassisWidth, 0.2, chassisDepth] },
@@ -747,8 +753,17 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const controls = usePlayerControls();
   const lastChange = useRef(false);
   
-  const lastPos = useRef([0, 0.5, 0]);
+  const lastPos = useRef([0, 0, 0]);
   const lastRot = useRef([0, 0, 0]);
+
+  const teleportToTrack = () => {
+    const trackPos = [180, 1, -300]; // Vị trí vạch xuất phát (khớp với vị trí RaceTrack)
+    chassisApi.position.set(...trackPos);
+    chassisApi.velocity.set(0, 0, 0);
+    chassisApi.angularVelocity.set(0, 0, 0);
+    // Reset hướng xe nhìn thẳng theo đường đua
+    chassisApi.rotation.set(0, 0, 0);
+  };
 
   const contents = (
     <>
@@ -764,6 +779,11 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
           controls={controls}
         />
       )}
+      <RaceTrack 
+        position={[180, 0, -300]} 
+        scale={0.7} 
+        onEnterTrack={teleportToTrack} 
+      />
       <Ground />
       <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
     </>
@@ -874,500 +894,492 @@ export default function App() {
   };
 
   return (
-    <div style={{ width: '100vw', height: '100vh', background: `linear-gradient(to bottom, ${weather.skyTop}, ${weather.skyBottom})`, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', fontFamily: 'Arial, sans-serif' }}>
-      <style>{`
-        * { margin:0; padding:0; box-sizing:border-box; }
-        body { overflow:hidden; }
-        
-        .top-ui {
-          position: absolute;
-          top: 20px;
-          left: 20px;
-          display: flex;
-          align-items: center;
-          gap: 15px;
-          z-index: 100;
-        }
-
-        /* Ẩn nút ảo trên máy tính (nơi có chuột thực sự), hiện trên mọi màn hình cảm ứng kể cả lúc xoay ngang */
-        @media (hover: hover) and (pointer: fine) {
-          .mobile-controls { display: none !important; }
-        }
-        .mobile-controls {
-          position: absolute;
-          top: 0; left: 0; right: 0; bottom: 0;
-          pointer-events: none;
-          z-index: 50;
-        }
-        .mc-btn {
-          pointer-events: auto;
-          background: rgba(255, 255, 255, 0.2);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.4);
-          color: white;
-          border-radius: 50%;
-          font-size: 24px;
-          font-weight: bold;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          user-select: none;
-          -webkit-user-select: none;
-          touch-action: none;
-          cursor: pointer;
-        }
-        .mc-btn:active { background: rgba(255, 255, 255, 0.5); transform: scale(0.95); }
-        .mc-left { position: absolute; bottom: 30px; left: 20px; display: flex; gap: 15px; }
-        .mc-left .mc-btn { width: 60px; height: 60px; }
-        .mc-left .small-btn { width: 40px; height: 40px; font-size: 16px; margin-top: 10px; }
-        
-        .mc-right { position: absolute; bottom: 30px; right: 20px; display: flex; flex-direction: column; gap: 15px; }
-        .mc-right .mc-btn { width: 60px; height: 60px; }
-        .mc-right .gas-btn { border-radius: 15px; background: rgba(76, 175, 80, 0.4); }
-        .mc-right .brake-btn { border-radius: 15px; background: rgba(244, 67, 54, 0.4); }
-
-        .mc-top-right { position: absolute; top: 50%; right: 20px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; }
-        .mc-top-right .action-btn { width: 60px; height: 60px; border-radius: 50%; font-size: 14px; background: rgba(33, 150, 243, 0.4); }
-
-
-        .user-profile-hud {
-          background: rgba(0, 0, 0, 0.7);
-          padding: 8px 20px 8px 8px;
-          border-radius: 50px;
-          display: flex;
-          align-items: center;
-          gap: 12px;
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          cursor: pointer;
-          transition: all 0.3s;
-          backdrop-filter: blur(10px);
-        }
-        .user-profile-hud:hover { background: rgba(0, 0, 0, 0.8); transform: scale(1.02); }
-        
-        .hud-avatar {
-          width: 42px;
-          height: 42px;
-          background: #333;
-          border-radius: 50%;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 24px;
-          border: 2px solid #FF7A2F;
-          overflow: hidden;
-        }
-        .hud-avatar img { width: 100%; height: 100%; object-fit: cover; }
-
-        .hud-info { display: flex; flex-direction: column; }
-        .hud-name { color: white; font-weight: bold; font-size: 14px; }
-        .hud-gold { color: #FFD700; font-size: 12px; font-weight: bold; }
-
-        .menu-button, .shop-button {
-          padding: 12px 24px;
-          background: rgba(255, 255, 255, 0.15);
-          backdrop-filter: blur(10px);
-          border: 1px solid rgba(255, 255, 255, 0.2);
-          color: white;
-          border-radius: 12px;
-          cursor: pointer;
-          font-weight: bold;
-          transition: all 0.3s;
-        }
-
-        .menu-button:hover, .shop-button:hover {
-          background: rgba(255, 255, 255, 0.3);
-          transform: translateY(-2px);
-        }
-
-        .shop-button { background: rgba(255, 122, 47, 0.5); border-color: #FF7A2F; }
-
-        .overlay {
-          position: fixed;
-          top: 0;
-          left: 0;
-          width: 100%;
-          height: 100%;
-          background: rgba(0, 0, 0, 0.85);
-          display: none;
-          justify-content: center;
-          align-items: center;
-          z-index: 1000;
-          backdrop-filter: blur(8px);
-        }
-        
-        .overlay.active { display: flex; }
-        
-        .menu-card {
-          background: #111;
-          padding: 40px;
-          border-radius: 32px;
-          text-align: center;
-          max-width: 600px;
-          width: 95%;
-          border: 1px solid rgba(255, 255, 255, 0.1);
-          box-shadow: 0 20px 50px rgba(0,0,0,0.5);
-        }
-
-        .menu-card h2 { color: white; margin-bottom: 25px; font-size: 28px; text-transform: uppercase; }
-        
-        .profile-edit-input {
-          width: 100%;
-          padding: 15px;
-          background: #222;
-          border: 2px solid #333;
-          border-radius: 12px;
-          color: white;
-          font-size: 18px;
-          margin-bottom: 10px;
-          text-align: center;
-        }
-        .profile-edit-input:focus { border-color: #FF7A2F; outline: none; }
-
-        .avatar-preview-large {
-          width: 120px;
-          height: 120px;
-          background: #222;
-          border-radius: 50%;
-          margin: 0 auto 10px;
-          display: flex;
-          align-items: center;
-          justify-content: center;
-          font-size: 60px;
-          border: 4px solid #FF7A2F;
-          overflow: hidden;
-          cursor: pointer;
-          position: relative;
-          transition: transform 0.3s;
-        }
-        .avatar-preview-large:hover { transform: scale(1.05); }
-        .avatar-preview-large img { width: 100%; height: 100%; object-fit: cover; }
-        
-        .change-photo-btn {
-          background: #FF7A2F;
-          color: white;
-          border: none;
-          padding: 8px 16px;
-          border-radius: 20px;
-          font-size: 12px;
-          font-weight: bold;
-          cursor: pointer;
-          margin-bottom: 20px;
-          display: inline-flex;
-          align-items: center;
-          gap: 5px;
-        }
-
-        .avatar-selector {
-          display: grid;
-          grid-template-columns: repeat(5, 1fr);
-          gap: 10px;
-          margin-bottom: 20px;
-          padding: 10px;
-          background: rgba(255, 255, 255, 0.05);
-          border-radius: 16px;
-        }
-        .avatar-item {
-          font-size: 32px;
-          padding: 10px;
-          background: #222;
-          border-radius: 12px;
-          cursor: pointer;
-          transition: 0.2s;
-          border: 2px solid transparent;
-        }
-        .avatar-item:hover { transform: scale(1.1); background: #333; }
-        .avatar-item.selected { border-color: #FF7A2F; background: #332211; }
-
-        .upload-hint { color: #888; font-size: 13px; margin-bottom: 15px; }
-
-        .vehicle-options {
-          display: grid;
-          grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-          gap: 15px;
-          margin-bottom: 30px;
-        }
-        
-        .vehicle-option {
-          background: #222;
-          padding: 20px;
-          border-radius: 24px;
-          cursor: pointer;
-          transition: all 0.3s;
-          border: 2px solid transparent;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-        }
-        .vehicle-option:hover { background: #2a2a2a; transform: translateY(-5px); }
-        .vehicle-option.selected { border-color: #FF7A2F; background: #332211; }
-        
-        .vehicle-icon { font-size: 40px; margin-bottom: 10px; }
-        .vehicle-option h3 { color: white; font-size: 14px; margin: 0; }
-        .price-tag { color: #FFD700; font-weight: bold; margin-top: 10px; font-size: 14px; }
-
-        .buy-btn, .save-btn {
-          margin-top: 15px;
-          padding: 14px 25px;
-          background: #FF7A2F;
-          border: none;
-          color: white;
-          border-radius: 16px;
-          cursor: pointer;
-          font-weight: bold;
-          width: 100%;
-          font-size: 16px;
-          text-transform: uppercase;
-          letter-spacing: 1px;
-        }
-
-        .close-btn {
-          padding: 12px 40px;
-          background: #333;
-          border: none;
-          color: white;
-          border-radius: 12px;
-          cursor: pointer;
-          font-weight: bold;
-        }
-
-        /* Tối ưu hóa UI cho điện thoại màn hình dọc và màn hình xoay ngang (Landscape) */
-        @media (max-width: 900px), (max-height: 600px) {
-          .menu-card { padding: 15px; max-height: 85vh; overflow-y: auto; }
-          .menu-card h2 { font-size: 18px; margin-bottom: 10px; }
-          /* Dùng auto-fit để tự động giãn cột: dọc thì 2 cột, ngang thì 3-4 cột tùy chiều rộng */
-          .vehicle-options { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 15px; }
-          .vehicle-option { padding: 10px; border-radius: 12px; }
-          .vehicle-icon { font-size: 26px; margin-bottom: 5px; }
-          .vehicle-option h3 { font-size: 12px; }
-          .price-tag { font-size: 11px; margin-top: 5px; }
-          .buy-btn, .save-btn { padding: 8px 10px; font-size: 12px; border-radius: 10px; margin-top: 8px; }
-          .close-btn { width: 100%; padding: 10px 15px; font-size: 14px; }
+    <RaceManager>
+      <div style={{ width: '100vw', height: '100vh', background: `linear-gradient(to bottom, ${weather.skyTop}, ${weather.skyBottom})`, margin: 0, padding: 0, overflow: 'hidden', position: 'relative', fontFamily: 'Arial, sans-serif' }}>
+        <style>{`
+          * { margin:0; padding:0; box-sizing:border-box; }
+          body { overflow:hidden; }
           
-          .avatar-selector { grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 10px; }
-          .avatar-item { font-size: 20px; padding: 4px; }
-          .avatar-preview-large { width: 60px; height: 60px; font-size: 30px; margin-bottom: 10px; }
-          .change-photo-btn { font-size: 10px; padding: 5px 10px; margin-bottom: 10px; }
-          
-          .top-ui { flex-wrap: wrap; gap: 6px; top: 10px; left: 10px; right: 10px; }
-          .user-profile-hud { padding: 4px 12px 4px 4px; }
-          .hud-avatar { width: 28px; height: 28px; font-size: 14px; }
-          .hud-name { font-size: 11px; }
-          .hud-gold { font-size: 10px; }
-          .menu-button, .shop-button { padding: 6px 10px; font-size: 11px; border-radius: 6px; }
-          
-          /* Giảm kích thước nút bấm ảo và sửa lỗi đè nút khi xoay ngang */
-          .mc-btn { width: 50px; height: 50px; font-size: 18px; }
-          .mc-left .mc-btn, .mc-right .mc-btn { width: 50px; height: 50px; }
-          .mc-top-right .action-btn { width: 50px; height: 50px; font-size: 12px; }
-          .mc-left, .mc-right { bottom: 50px; }
-          .mc-left { left: 20px; }
-          .mc-right { right: 20px; }
-          .mc-top-right { 
-            top: auto; bottom: 50px; right: 85px; 
-            transform: none; 
-            flex-direction: column; 
-            gap: 6px; 
+          .top-ui {
+            position: absolute;
+            top: 20px;
+            left: 20px;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            z-index: 100;
           }
-          .mc-right { gap: 6px; }
-        }
-      `}</style>
 
-      {/* Top HUD */}
-      <div className="top-ui">
-        <div className="user-profile-hud" onClick={() => setShowProfile(true)}>
-          <div className="hud-avatar">
-            {userAvatar.length > 5 ? <img src={userAvatar} alt="avatar" /> : userAvatar}
-          </div>
-          <div className="hud-info">
-            <span className="hud-name">{userName}</span>
-            <span className="hud-gold">💰 {gold.toLocaleString()}</span>
-          </div>
-        </div>
-        <button className="menu-button" onClick={() => setShowMenu(true)}>Ga-ra</button>
-        <button className="shop-button" onClick={() => setShowShop(true)}>Shop 🛒</button>
-        <button className="menu-button" onClick={() => setDebug(!debug)} style={{ background: debug ? '#ff4444' : 'rgba(255,255,255,0.15)', border: debug ? '1px solid #ff0000' : '1px solid rgba(255,255,255,0.2)' }}>
-          Hitbox: {debug ? 'ON' : 'OFF'}
-        </button>
-        <div style={{
-          color: 'rgba(255,255,255,0.7)',
-          fontSize: '11px',
-          fontStyle: 'italic',
-          marginLeft: '10px',
-          background: 'rgba(0,0,0,0.3)',
-          padding: '5px 10px',
-          borderRadius: '20px',
-          border: '1px solid rgba(255,255,255,0.1)'
-        }}>
-          ⚠️ ĐỢI GAME LOAD MODULE KHOẢNG 20S R MỚI ĐỔI XE
-        </div>
-      </div>
-
-      {/* Profile Edit Overlay */}
-      <div className={`overlay ${showProfile ? 'active' : ''}`}>
-        <div className="menu-card">
-          <h2>Thiết Lập Hồ Sơ</h2>
+          /* Ẩn nút ảo trên máy tính (nơi có chuột thực sự), hiện trên mọi màn hình cảm ứng kể cả lúc xoay ngang */
+          @media (hover: hover) and (pointer: fine) {
+            .mobile-controls { display: none !important; }
+          }
+          .mobile-controls {
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            pointer-events: none;
+            z-index: 50;
+          }
+          .mc-btn {
+            pointer-events: auto;
+            background: rgba(255, 255, 255, 0.2);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.4);
+            color: white;
+            border-radius: 50%;
+            font-size: 24px;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            user-select: none;
+            -webkit-user-select: none;
+            touch-action: none;
+            cursor: pointer;
+          }
+          .mc-btn:active { background: rgba(255, 255, 255, 0.5); transform: scale(0.95); }
+          .mc-left { position: absolute; bottom: 30px; left: 20px; display: flex; gap: 15px; }
+          .mc-left .mc-btn { width: 60px; height: 60px; }
+          .mc-left .small-btn { width: 40px; height: 40px; font-size: 16px; margin-top: 10px; }
           
-          <div className="avatar-preview-large" onClick={() => document.getElementById('avatar-input').click()}>
-            {userAvatar.length > 5 ? <img src={userAvatar} alt="avatar" /> : userAvatar}
-          </div>
-          <button className="change-photo-btn" onClick={() => document.getElementById('avatar-input').click()}>
-            📸 TẢI ẢNH TỪ MÁY TÍNH
-          </button>
+          .mc-right { position: absolute; bottom: 30px; right: 20px; display: flex; flex-direction: column; gap: 15px; }
+          .mc-right .mc-btn { width: 60px; height: 60px; }
+          .mc-right .gas-btn { border-radius: 15px; background: rgba(76, 175, 80, 0.4); }
+          .mc-right .brake-btn { border-radius: 15px; background: rgba(244, 67, 54, 0.4); }
+
+          .mc-top-right { position: absolute; top: 50%; right: 20px; transform: translateY(-50%); display: flex; flex-direction: column; gap: 15px; }
+          .mc-top-right .action-btn { width: 60px; height: 60px; border-radius: 50%; font-size: 14px; background: rgba(33, 150, 243, 0.4); }
+
+
+          .user-profile-hud {
+            background: rgba(0, 0, 0, 0.7);
+            padding: 8px 20px 8px 8px;
+            border-radius: 50px;
+            display: flex;
+            align-items: center;
+            gap: 12px;
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            cursor: pointer;
+            transition: all 0.3s;
+            backdrop-filter: blur(10px);
+          }
+          .user-profile-hud:hover { background: rgba(0, 0, 0, 0.8); transform: scale(1.02); }
           
-          <input 
-            id="avatar-input"
-            type="file" 
-            accept="image/*" 
-            style={{display: 'none'}} 
-            onChange={handleAvatarUpload}
-          />
-          <p className="upload-hint">Hoặc chọn một biểu tượng sẵn có:</p>
+          .hud-avatar {
+            width: 42px;
+            height: 42px;
+            background: #333;
+            border-radius: 50%;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 24px;
+            border: 2px solid #FF7A2F;
+            overflow: hidden;
+          }
+          .hud-avatar img { width: 100%; height: 100%; object-fit: cover; }
 
-          <div className="avatar-selector">
-            {avatars.map(a => (
-              <div 
-                key={a} 
-                className={`avatar-item ${userAvatar === a ? 'selected' : ''}`}
-                onClick={() => setUserAvatar(a)}
-              >
-                {a}
-              </div>
-            ))}
-          </div>
+          .hud-info { display: flex; flex-direction: column; }
+          .hud-name { color: white; font-weight: bold; font-size: 14px; }
+          .hud-gold { color: #FFD700; font-size: 12px; font-weight: bold; }
 
-          <input 
-            className="profile-edit-input"
-            value={userName}
-            onChange={(e) => setUserName(e.target.value)}
-            placeholder="Nhập tên của bạn..."
-            maxLength={20}
-          />
+          .menu-button, .shop-button {
+            padding: 12px 24px;
+            background: rgba(255, 255, 255, 0.15);
+            backdrop-filter: blur(10px);
+            border: 1px solid rgba(255, 255, 255, 0.2);
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+            transition: all 0.3s;
+          }
+
+          .menu-button:hover, .shop-button:hover {
+            background: rgba(255, 255, 255, 0.3);
+            transform: translateY(-2px);
+          }
+
+          .shop-button { background: rgba(255, 122, 47, 0.5); border-color: #FF7A2F; }
+
+          .overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0, 0, 0, 0.85);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 1000;
+            backdrop-filter: blur(8px);
+          }
           
-          <button className="save-btn" onClick={() => setShowProfile(false)}>BẮT ĐẦU TRÒ CHƠI</button>
-        </div>
-      </div>
+          .overlay.active { display: flex; }
+          
+          .menu-card {
+            background: #111;
+            padding: 40px;
+            border-radius: 32px;
+            text-align: center;
+            max-width: 600px;
+            width: 95%;
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+          }
 
-      {/* Ga-ra Overlay */}
-      <div className={`overlay ${showMenu ? 'active' : ''}`}>
-        <div className="menu-card">
-          <h2>Xe Đã Sở Hữu</h2>
-          <div className="vehicle-options">
-            <div 
-              className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''}`}
-              onClick={() => { setVehicleFolder('default'); setShowMenu(false); }}
-            >
-              <span className="vehicle-icon">🏎️</span>
-              <h3>Xe Mặc Định</h3>
-            </div>
+          .menu-card h2 { color: white; margin-bottom: 25px; font-size: 28px; text-transform: uppercase; }
+          
+          .profile-edit-input {
+            width: 100%;
+            padding: 15px;
+            background: #222;
+            border: 2px solid #333;
+            border-radius: 12px;
+            color: white;
+            font-size: 18px;
+            margin-bottom: 10px;
+            text-align: center;
+          }
+          .profile-edit-input:focus { border-color: #FF7A2F; outline: none; }
+
+          .avatar-preview-large {
+            width: 120px;
+            height: 120px;
+            background: #222;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 60px;
+            border: 4px solid #FF7A2F;
+            overflow: hidden;
+            cursor: pointer;
+            position: relative;
+            transition: transform 0.3s;
+          }
+          .avatar-preview-large:hover { transform: scale(1.05); }
+          .avatar-preview-large img { width: 100%; height: 100%; object-fit: cover; }
+          
+          .change-photo-btn {
+            background: #FF7A2F;
+            color: white;
+            border: none;
+            padding: 8px 16px;
+            border-radius: 20px;
+            font-size: 12px;
+            font-weight: bold;
+            cursor: pointer;
+            margin-bottom: 20px;
+            display: inline-flex;
+            align-items: center;
+            gap: 5px;
+          }
+
+          .avatar-selector {
+            display: grid;
+            grid-template-columns: repeat(5, 1fr);
+            gap: 10px;
+            margin-bottom: 20px;
+            padding: 10px;
+            background: rgba(255, 255, 255, 0.05);
+            border-radius: 16px;
+          }
+          .avatar-item {
+            font-size: 32px;
+            padding: 10px;
+            background: #222;
+            border-radius: 12px;
+            cursor: pointer;
+            transition: 0.2s;
+            border: 2px solid transparent;
+          }
+          .avatar-item:hover { transform: scale(1.1); background: #333; }
+          .avatar-item.selected { border-color: #FF7A2F; background: #332211; }
+
+          .upload-hint { color: #888; font-size: 13px; margin-bottom: 15px; }
+
+          .vehicle-options {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+            gap: 15px;
+            margin-bottom: 30px;
+          }
+          
+          .vehicle-option {
+            background: #222;
+            padding: 20px;
+            border-radius: 24px;
+            cursor: pointer;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+          }
+          .vehicle-option:hover { background: #2a2a2a; transform: translateY(-5px); }
+          .vehicle-option.selected { border-color: #FF7A2F; background: #332211; }
+          
+          .vehicle-icon { font-size: 40px; margin-bottom: 10px; }
+          .vehicle-option h3 { color: white; font-size: 14px; margin: 0; }
+          .price-tag { color: #FFD700; font-weight: bold; margin-top: 10px; font-size: 14px; }
+
+          .buy-btn, .save-btn {
+            margin-top: 15px;
+            padding: 14px 25px;
+            background: #FF7A2F;
+            border: none;
+            color: white;
+            border-radius: 16px;
+            cursor: pointer;
+            font-weight: bold;
+            width: 100%;
+            font-size: 16px;
+            text-transform: uppercase;
+            letter-spacing: 1px;
+          }
+
+          .close-btn {
+            padding: 12px 40px;
+            background: #333;
+            border: none;
+            color: white;
+            border-radius: 12px;
+            cursor: pointer;
+            font-weight: bold;
+          }
+
+          /* Tối ưu hóa UI cho điện thoại màn hình dọc và màn hình xoay ngang (Landscape) */
+          @media (max-width: 900px), (max-height: 600px) {
+            .menu-card { padding: 15px; max-height: 85vh; overflow-y: auto; }
+            .menu-card h2 { font-size: 18px; margin-bottom: 10px; }
+            /* Dùng auto-fit để tự động giãn cột: dọc thì 2 cột, ngang thì 3-4 cột tùy chiều rộng */
+            .vehicle-options { grid-template-columns: repeat(auto-fit, minmax(110px, 1fr)); gap: 10px; margin-bottom: 15px; }
+            .vehicle-option { padding: 10px; border-radius: 12px; }
+            .vehicle-icon { font-size: 26px; margin-bottom: 5px; }
+            .vehicle-option h3 { font-size: 12px; }
+            .price-tag { font-size: 11px; margin-top: 5px; }
+            .buy-btn, .save-btn { padding: 8px 10px; font-size: 12px; border-radius: 10px; margin-top: 8px; }
+            .close-btn { width: 100%; padding: 10px 15px; font-size: 14px; }
             
-            {unlockedVehicles.includes('alternative') && (
+            .avatar-selector { grid-template-columns: repeat(5, 1fr); gap: 5px; margin-bottom: 10px; }
+            .avatar-item { font-size: 20px; padding: 4px; }
+            .avatar-preview-large { width: 60px; height: 60px; font-size: 30px; margin-bottom: 10px; }
+            .change-photo-btn { font-size: 10px; padding: 5px 10px; margin-bottom: 10px; }
+            
+            .top-ui { flex-wrap: wrap; gap: 6px; top: 10px; left: 10px; right: 10px; }
+            .user-profile-hud { padding: 4px 12px 4px 4px; }
+            .hud-avatar { width: 28px; height: 28px; font-size: 14px; }
+            .hud-name { font-size: 11px; }
+            .hud-gold { font-size: 10px; }
+            .menu-button, .shop-button { padding: 6px 10px; font-size: 11px; border-radius: 6px; }
+            
+            /* Giảm kích thước nút bấm ảo và sửa lỗi đè nút khi xoay ngang */
+            .mc-btn { width: 50px; height: 50px; font-size: 18px; }
+            .mc-left .mc-btn, .mc-right .mc-btn { width: 50px; height: 50px; }
+            .mc-top-right .action-btn { width: 50px; height: 50px; font-size: 12px; }
+            .mc-left, .mc-right { bottom: 50px; }
+            .mc-left { left: 20px; }
+            .mc-right { right: 20px; }
+            .mc-top-right { 
+              top: auto; bottom: 50px; right: 85px; 
+              transform: none; 
+              flex-direction: column; 
+              gap: 6px; 
+            }
+            .mc-right { gap: 6px; }
+          }
+        `}</style>
+
+        {/* Top HUD */}
+        <div className="top-ui">
+          <div className="user-profile-hud" onClick={() => setShowProfile(true)}>
+            <div className="hud-avatar">
+              {userAvatar.length > 5 ? <img src={userAvatar} alt="avatar" /> : userAvatar}
+            </div>
+            <div className="hud-info">
+              <span className="hud-name">{userName}</span>
+              <span className="hud-gold">💰 {gold.toLocaleString()}</span>
+            </div>
+          </div>
+          <button className="menu-button" onClick={() => setShowMenu(true)}>Ga-ra</button>
+          <button className="shop-button" onClick={() => setShowShop(true)}>Shop 🛒</button>
+          <button className="menu-button" onClick={() => setDebug(!debug)} style={{ background: debug ? '#ff4444' : 'rgba(255,255,255,0.15)', border: debug ? '1px solid #ff0000' : '1px solid rgba(255,255,255,0.2)' }}>
+            Hitbox: {debug ? 'ON' : 'OFF'}
+          </button>
+        </div>
+
+        {/* Profile Edit Overlay */}
+        <div className={`overlay ${showProfile ? 'active' : ''}`}>
+          <div className="menu-card">
+            <h2>Thiết Lập Hồ Sơ</h2>
+            
+            <div className="avatar-preview-large" onClick={() => document.getElementById('avatar-input').click()}>
+              {userAvatar.length > 5 ? <img src={userAvatar} alt="avatar" /> : userAvatar}
+            </div>
+            <button className="change-photo-btn" onClick={() => document.getElementById('avatar-input').click()}>
+              📸 TẢI ẢNH TỪ MÁY TÍNH
+            </button>
+            
+            <input 
+              id="avatar-input"
+              type="file" 
+              accept="image/*" 
+              style={{display: 'none'}} 
+              onChange={handleAvatarUpload}
+            />
+            <p className="upload-hint">Hoặc chọn một biểu tượng sẵn có:</p>
+
+            <div className="avatar-selector">
+              {avatars.map(a => (
+                <div 
+                  key={a} 
+                  className={`avatar-item ${userAvatar === a ? 'selected' : ''}`}
+                  onClick={() => setUserAvatar(a)}
+                >
+                  {a}
+                </div>
+              ))}
+            </div>
+
+            <input 
+              className="profile-edit-input"
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
+              placeholder="Nhập tên của bạn..."
+              maxLength={20}
+            />
+            
+            <button className="save-btn" onClick={() => setShowProfile(false)}>BẮT ĐẦU TRÒ CHƠI</button>
+          </div>
+        </div>
+
+        {/* Ga-ra Overlay */}
+        <div className={`overlay ${showMenu ? 'active' : ''}`}>
+          <div className="menu-card">
+            <h2>Xe Đã Sở Hữu</h2>
+            <div className="vehicle-options">
               <div 
-                className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''}`}
-                onClick={() => { setVehicleFolder('alternative'); setShowMenu(false); }}
+                className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''}`}
+                onClick={() => { setVehicleFolder('default'); setShowMenu(false); }}
               >
+                <span className="vehicle-icon">🏎️</span>
+                <h3>Xe Mặc Định</h3>
+              </div>
+              
+              {unlockedVehicles.includes('alternative') && (
+                <div 
+                  className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''}`}
+                  onClick={() => { setVehicleFolder('alternative'); setShowMenu(false); }}
+                >
+                  <span className="vehicle-icon">🚓</span>
+                  <h3>Xe Cảnh Sát</h3>
+                </div>
+              )}
+
+              {unlockedVehicles.includes('helicopter') && (
+                <div 
+                  className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''}`}
+                  onClick={() => { setVehicleFolder('helicopter'); setShowMenu(false); }}
+                >
+                  <span className="vehicle-icon">🚁</span>
+                  <h3>Máy Bay</h3>
+                </div>
+              )}
+
+              {unlockedVehicles.includes('ship') && (
+                <div 
+                  className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''}`}
+                  onClick={() => { setVehicleFolder('ship'); setShowMenu(false); }}
+                >
+                  <span className="vehicle-icon">🚜</span>
+                  <h3>Xe Tăng</h3>
+                </div>
+              )}
+              
+              {unlockedVehicles.includes('rolls_royce') && (
+                <div 
+                  className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''}`}
+                  onClick={() => { setVehicleFolder('rolls_royce'); setShowMenu(false); }}
+                >
+                  <span className="vehicle-icon">💎</span>
+                  <h3>Rolls Royce</h3>
+                </div>
+              )}
+            </div>
+            <button className="close-btn" onClick={() => setShowMenu(false)}>ĐÓNG</button>
+          </div>
+        </div>
+
+        {/* Shop Overlay */}
+        <div className={`overlay ${showShop ? 'active' : ''}`}>
+          <div className="menu-card">
+            <h2>Cửa Hàng Siêu Xe</h2>
+            <div className="vehicle-options">
+              <div className="vehicle-option">
                 <span className="vehicle-icon">🚓</span>
                 <h3>Xe Cảnh Sát</h3>
+                <span className="price-tag">💰 500</span>
+                {!unlockedVehicles.includes('alternative') ? (
+                  <button className="buy-btn" onClick={() => buyVehicle('alternative')}>MUA</button>
+                ) : (
+                  <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
+                )}
               </div>
-            )}
 
-            {unlockedVehicles.includes('helicopter') && (
-              <div 
-                className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''}`}
-                onClick={() => { setVehicleFolder('helicopter'); setShowMenu(false); }}
-              >
+              <div className="vehicle-option">
                 <span className="vehicle-icon">🚁</span>
                 <h3>Máy Bay</h3>
+                <span className="price-tag">💰 1500</span>
+                {!unlockedVehicles.includes('helicopter') ? (
+                  <button className="buy-btn" onClick={() => buyVehicle('helicopter')}>MUA</button>
+                ) : (
+                  <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
+                )}
               </div>
-            )}
 
-            {unlockedVehicles.includes('ship') && (
-              <div 
-                className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''}`}
-                onClick={() => { setVehicleFolder('ship'); setShowMenu(false); }}
-              >
+              <div className="vehicle-option">
                 <span className="vehicle-icon">🚜</span>
                 <h3>Xe Tăng</h3>
+                <span className="price-tag">💰 1000</span>
+                {!unlockedVehicles.includes('ship') ? (
+                  <button className="buy-btn" onClick={() => buyVehicle('ship')}>MUA</button>
+                ) : (
+                  <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
+                )}
               </div>
-            )}
-            
-            {unlockedVehicles.includes('rolls_royce') && (
-              <div 
-                className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''}`}
-                onClick={() => { setVehicleFolder('rolls_royce'); setShowMenu(false); }}
-              >
+
+              <div className="vehicle-option">
                 <span className="vehicle-icon">💎</span>
                 <h3>Rolls Royce</h3>
+                <span className="price-tag">💰 2500</span>
+                {!unlockedVehicles.includes('rolls_royce') ? (
+                  <button className="buy-btn" onClick={() => buyVehicle('rolls_royce')}>MUA</button>
+                ) : (
+                  <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
+                )}
               </div>
-            )}
+            </div>
+            <button className="close-btn" onClick={() => setShowShop(false)}>ĐÓNG</button>
           </div>
-          <button className="close-btn" onClick={() => setShowMenu(false)}>ĐÓNG</button>
         </div>
-      </div>
-
-      {/* Shop Overlay */}
-      <div className={`overlay ${showShop ? 'active' : ''}`}>
-        <div className="menu-card">
-          <h2>Cửa Hàng Siêu Xe</h2>
-          <div className="vehicle-options">
-            <div className="vehicle-option">
-              <span className="vehicle-icon">🚓</span>
-              <h3>Xe Cảnh Sát</h3>
-              <span className="price-tag">💰 500</span>
-              {!unlockedVehicles.includes('alternative') ? (
-                <button className="buy-btn" onClick={() => buyVehicle('alternative')}>MUA</button>
-              ) : (
-                <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
-              )}
-            </div>
-
-            <div className="vehicle-option">
-              <span className="vehicle-icon">🚁</span>
-              <h3>Máy Bay</h3>
-              <span className="price-tag">💰 1500</span>
-              {!unlockedVehicles.includes('helicopter') ? (
-                <button className="buy-btn" onClick={() => buyVehicle('helicopter')}>MUA</button>
-              ) : (
-                <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
-              )}
-            </div>
-
-            <div className="vehicle-option">
-              <span className="vehicle-icon">🚜</span>
-              <h3>Xe Tăng</h3>
-              <span className="price-tag">💰 1000</span>
-              {!unlockedVehicles.includes('ship') ? (
-                <button className="buy-btn" onClick={() => buyVehicle('ship')}>MUA</button>
-              ) : (
-                <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
-              )}
-            </div>
-
-            <div className="vehicle-option">
-              <span className="vehicle-icon">💎</span>
-              <h3>Rolls Royce</h3>
-              <span className="price-tag">💰 2500</span>
-              {!unlockedVehicles.includes('rolls_royce') ? (
-                <button className="buy-btn" onClick={() => buyVehicle('rolls_royce')}>MUA</button>
-              ) : (
-                <span style={{color: '#4caf50', marginTop: '15px', fontWeight: 'bold'}}>SỞ HỮU</span>
-              )}
-            </div>
-          </div>
-          <button className="close-btn" onClick={() => setShowShop(false)}>ĐÓNG</button>
-        </div>
-      </div>
-
-      {/* Removed heli-controls */}
 
       <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: 'transparent' }}>
+        <RaceTicker />
         <Environment weather={weather} />
         <ambientLight intensity={weather.ambientIntensity} color={weather.ambientColor} />
         <directionalLight position={[10, 20, 10]} intensity={weather.sunIntensity} color={weather.sunColor} />
         <directionalLight position={[-10, 10, -10]} intensity={weather.sunIntensity * 0.3} color={weather.sunColor} />
-        <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
+        <Suspense fallback={<Html center><div style={{ color: 'white', background: 'rgba(0,0,0,0.8)', padding: '20px 40px', borderRadius: '50px', fontSize: '24px', fontWeight: 'bold', whiteSpace: 'nowrap', border: '1px solid rgba(255,255,255,0.2)', backdropFilter: 'blur(10px)' }}>⏳ ĐANG TẢI MAP...</div></Html>}>
+          <Game vehicleFolder={vehicleFolder} setVehicleFolder={setVehicleFolder} debug={debug} />
+        </Suspense>
       </Canvas>
       <WeatherPanel weather={weather} setWeather={setWeather} />
       <MobileControls vehicleFolder={vehicleFolder} />
+      <RaceUI />
     </div>
-  );
+  </RaceManager>
+);
 }
