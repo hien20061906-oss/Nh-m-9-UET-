@@ -93,6 +93,7 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
 });
 
 const Car = ({ folder, lastPos, lastRot, controls }) => {
+  const { raceState } = useContext(RaceContext);
   const lastChange = useRef(false);
   const { camera } = useThree();
 
@@ -396,7 +397,13 @@ const Car = ({ folder, lastPos, lastRot, controls }) => {
     }
 
     // --- Hard Stop Logic: Triệt tiêu rung lắc tuyệt đối khi xe gần dừng hẳn ---
-    if (!forward && !backward && !left && !right && speed < 0.25) {
+    if (raceState === 'COUNTDOWN') {
+      // Khóa chặt xe trong lúc đếm ngược
+      chassisApi.velocity.set(0, 0, 0);
+      chassisApi.angularVelocity.set(0, 0, 0);
+      chassisApi.linearDamping.set(1.0);
+      chassisApi.angularDamping.set(1.0);
+    } else if (!forward && !backward && !left && !right && speed < 0.25) {
       chassisApi.velocity.set(0, 0, 0);
       chassisApi.angularVelocity.set(0, 0, 0);
       chassisApi.linearDamping.set(0.99);
@@ -767,7 +774,7 @@ const MapWithPhysics = ({ mapFile = 'map.glb', collisionFile = 'map_collision.gl
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
 function Game({ vehicleFolder, setVehicleFolder, debug }) {
-  const { raceState } = useContext(RaceContext); // Thêm dòng này
+  const { raceState, resetRace } = useContext(RaceContext);
   const controls = usePlayerControls();
   const lastChange = useRef(false);
   
@@ -818,15 +825,16 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   useEffect(() => {
     if (raceState === 'FINISHED') {
       const timer = setTimeout(() => {
-        // Tọa độ Billboard (Vị trí lúc bạn bắt đầu vào vùng cảm biến)
         const billboardPos = [180 - 100, 1, -300 + 50]; 
-        // Gửi tín hiệu dịch chuyển xe về Billboard
         const event = new CustomEvent('teleport-vehicle', { detail: { position: billboardPos } });
         window.dispatchEvent(event);
-      }, 3000); // Đợi 3 giây để bạn kịp nhìn thời gian kỷ lục
+        
+        // QUAN TRỌNG: Đưa trạng thái về IDLE để cái bảng hiện ra trở lại
+        resetRace();
+      }, 3000); 
       return () => clearTimeout(timer);
     }
-  }, [raceState]);
+  }, [raceState, resetRace]);
 
   return (
     <Physics gravity={[0, -9.81, 0]} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>

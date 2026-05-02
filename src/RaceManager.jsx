@@ -1,20 +1,22 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import React, { useState, useCallback, useRef, createContext, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 
 export const RACE_STATES = {
   IDLE: 'IDLE',
   COUNTDOWN: 'COUNTDOWN',
   RUNNING: 'RUNNING',
-  FINISHED: 'FINISHED',
+  FINISHED: 'FINISHED'
 };
+
+export const RaceContext = createContext();
 
 const RaceManager = ({ children }) => {
   const [raceState, setRaceState] = useState(RACE_STATES.IDLE);
-  const [currentTime, setCurrentTime] = useState(0);
   const [bestTime, setBestTime] = useState(parseFloat(localStorage.getItem('race_best_time')) || null);
   const [countdown, setCountdown] = useState(null);
   const [currentCheckpoint, setCurrentCheckpoint] = useState(-1);
   const startTime = useRef(0);
+  const currentTimeRef = useRef(0);
   
   const sounds = useRef({
     countdown1: new Audio('/sounds/circuit/countdown/Game Start Countdown 31-1.mp3'),
@@ -23,6 +25,25 @@ const RaceManager = ({ children }) => {
     finish: new Audio('/sounds/circuit/finish/Big Win Fanfare 2.mp3'),
     applause: new Audio('/sounds/circuit/applause/huge win.mp3'),
   });
+
+  const finishRace = useCallback(() => {
+    // Chỉ cho phép kết thúc nếu đang trong trạng thái RUNNING
+    setRaceState(prev => {
+      if (prev !== RACE_STATES.RUNNING) return prev;
+      
+      const finalTime = (performance.now() - startTime.current) / 1000;
+      currentTimeRef.current = finalTime;
+      
+      sounds.current.finish.play();
+      sounds.current.applause.play();
+      
+      if (!bestTime || finalTime < bestTime) {
+        setBestTime(finalTime);
+        localStorage.setItem('race_best_time', finalTime.toString());
+      }
+      return RACE_STATES.FINISHED;
+    });
+  }, [bestTime]);
 
   const startRace = useCallback(() => {
     setRaceState(RACE_STATES.COUNTDOWN);
@@ -40,76 +61,57 @@ const RaceManager = ({ children }) => {
         sounds.current.countdown2.play();
         setRaceState(RACE_STATES.RUNNING);
         startTime.current = performance.now();
+        currentTimeRef.current = 0;
         clearInterval(interval);
         setTimeout(() => setCountdown(null), 1000);
       }
     }, 1500);
   }, []);
 
-  const finishRace = useCallback(() => {
-    const finalTime = (performance.now() - startTime.current) / 1000;
-    setRaceState(RACE_STATES.FINISHED);
-    sounds.current.finish.play();
-    sounds.current.applause.play();
-    
-    if (!bestTime || finalTime < bestTime) {
-      setBestTime(finalTime);
-      localStorage.setItem('race_best_time', finalTime.toString());
-    }
-  }, [bestTime]);
-
   const onCheckpointReached = useCallback((index) => {
     if (raceState !== RACE_STATES.RUNNING) return;
-    
     if (index === currentCheckpoint + 1) {
       setCurrentCheckpoint(index);
       sounds.current.checkpoint.play();
-      
-      // If it's the last checkpoint (assuming index 10 for example, we'll calibrate this)
-      // For now, let's say index 99 is finish
-      if (index === 99) {
-        finishRace();
-      }
     }
-  }, [raceState, currentCheckpoint, finishRace]);
-
-  // REMOVED useFrame from here because RaceManager is used outside Canvas
-  // We will use a separate RaceTicker component inside the Canvas instead.
+  }, [raceState, currentCheckpoint]);
 
   const resetRace = useCallback(() => {
     setRaceState(RACE_STATES.IDLE);
-    setCurrentTime(0);
+    currentTimeRef.current = 0;
     setCurrentCheckpoint(-1);
     setCountdown(null);
   }, []);
 
+  // QUAN TRỌNG: Dùng useMemo để ngăn chặn việc re-render toàn bộ app khi context value thay đổi
+  const contextValue = useMemo(() => ({
+    raceState,
+    currentTimeRef,
+    startTime,
+    bestTime,
+    countdown,
+    currentCheckpoint,
+    startRace,
+    resetRace,
+    finishRace,
+    onCheckpointReached
+  }), [raceState, bestTime, countdown, currentCheckpoint, startRace, resetRace, finishRace, onCheckpointReached]);
+
   return (
-    <RaceContext.Provider value={{
-      raceState,
-      currentTime,
-      setCurrentTime, // Export this so RaceTicker can update it
-      startTime,     // Export this too
-      bestTime,
-      countdown,
-      currentCheckpoint,
-      startRace,
-      resetRace,
-      onCheckpointReached
-    }}>
+    <RaceContext.Provider value={contextValue}>
       {children}
     </RaceContext.Provider>
   );
 };
 
 export const RaceTicker = () => {
-  const { raceState, setCurrentTime, startTime } = React.useContext(RaceContext);
+  const { raceState, currentTimeRef, startTime } = React.useContext(RaceContext);
   useFrame(() => {
     if (raceState === RACE_STATES.RUNNING) {
-      setCurrentTime((performance.now() - startTime.current) / 1000);
+      currentTimeRef.current = (performance.now() - startTime.current) / 1000;
     }
   });
   return null;
 };
 
-export const RaceContext = React.createContext(null);
 export default RaceManager;

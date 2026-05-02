@@ -48,23 +48,24 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
   );
 };
 
-const FinishSensor = ({ position, offset, radius = 5 }) => {
-  const { raceState, finishRace, currentTime } = useContext(RaceContext);
+const FinishSensor = ({ position, offset, radius = 10 }) => {
+  const { raceState, finishRace, currentTimeRef } = useContext(RaceContext);
   
   useFrame((state) => {
     if (raceState !== 'RUNNING') return;
     
     // Chỉ cho phép về đích sau khi đã đua được ít nhất 10 giây 
     // (Để tránh việc vừa tele vào đã bị tính là về đích luôn)
-    if (currentTime < 10) return;
+    if (currentTimeRef.current < 10) return;
 
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
 
-    car.updateWorldMatrix(true, false);
+    // Lấy tọa độ thế giới của xe
     const carPos = new THREE.Vector3();
     car.getWorldPosition(carPos);
 
+    // Tọa độ vạch đích
     const finishPos = new THREE.Vector3(
       position[0] + offset[0],
       position[1] + offset[1],
@@ -74,12 +75,17 @@ const FinishSensor = ({ position, offset, radius = 5 }) => {
     const dist = carPos.distanceTo(finishPos);
 
     if (dist < radius) {
-      console.log("🏁 CHÚC MỪNG! BẠN ĐÃ VỀ ĐÍCH!");
+      console.log("🏁 FINISH LINE CROSSED!");
       finishRace();
     }
   });
 
-  return null;
+  return (
+    <mesh position={[offset[0], offset[1], offset[2]]}>
+      <boxGeometry args={[radius * 2, 5, 1]} />
+      <meshBasicMaterial color="#00ff88" transparent opacity={0.1} />
+    </mesh>
+  );
 };
 
 const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], uiScale = 1.0, rotation = 0 }) => {
@@ -129,94 +135,96 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
   return (
     <>
       {/* Biển báo Billboard 2 cột cắm dưới đất */}
-      {raceState === 'IDLE' && (
-        <group 
-          position={[offset[0], offset[1], offset[2]]} 
-          rotation={[0, rotation * (Math.PI / 180), 0]}
-        >
-          {/* Hai cột trụ 2 bên */}
-          <mesh position={[-2, 1.5, 0]}>
-            <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
-            <meshStandardMaterial color="#333" />
-          </mesh>
-          <mesh position={[2, 1.5, 0]}>
-            <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
-            <meshStandardMaterial color="#333" />
+      {/* Biển báo Billboard 2 cột cắm dưới đất - Luôn hiển thị cấu trúc bảng */}
+      <group 
+        position={[offset[0], offset[1], offset[2]]} 
+        rotation={[0, rotation * (Math.PI / 180), 0]}
+      >
+        {/* Hai cột trụ 2 bên */}
+        <mesh position={[-2, 1.5, 0]}>
+          <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
+          <meshStandardMaterial color="#333" />
+        </mesh>
+        <mesh position={[2, 1.5, 0]}>
+          <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
+          <meshStandardMaterial color="#333" />
+        </mesh>
+        
+        {/* Vòng tròn nhận diện dưới đất */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+          <ringGeometry args={[radius - 0.5, radius, 64]} />
+          <meshBasicMaterial color="#00ff88" transparent opacity={0.15} side={THREE.DoubleSide} />
+        </mesh>
+
+        {/* Cấu trúc Bảng hiệu chính */}
+        <group position={[0, 3, 0]}>
+          {/* Khung bảng */}
+          <mesh>
+            <boxGeometry args={[4.5, 3, 0.3]} />
+            <meshStandardMaterial color="#111" />
           </mesh>
           
-          {/* Vòng tròn nhận diện dưới đất */}
-          <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
-            <ringGeometry args={[radius - 0.5, radius, 64]} />
-            <meshBasicMaterial color="#00ff88" transparent opacity={0.15} side={THREE.DoubleSide} />
+          {/* Mặt bảng phát sáng */}
+          <mesh position={[0, 0, 0.16]}>
+            <boxGeometry args={[4.2, 2.7, 0.05]} />
+            <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.2} transparent opacity={0.9} />
           </mesh>
 
-          {/* Cấu trúc Bảng hiệu chính */}
-          <group position={[0, 3, 0]}>
-            {/* Khung bảng */}
-            <mesh>
-              <boxGeometry args={[4.5, 3, 0.3]} />
-              <meshStandardMaterial color="#111" />
-            </mesh>
-            
-            {/* Mặt bảng phát sáng */}
-            <mesh position={[0, 0, 0.16]}>
-              <boxGeometry args={[4.2, 2.7, 0.05]} />
-              <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.2} transparent opacity={0.9} />
-            </mesh>
-
-            {/* Chữ RACE dính vào bảng */}
-            <Html 
-              transform 
-              distanceFactor={3.5} 
-              position={[0, 0.5, 0.2]}
-              pointerEvents="none"
-            >
-              <div style={{
-                color: 'black',
-                fontFamily: '"Arial Black", sans-serif',
-                textAlign: 'center',
-                width: '400px',
-                userSelect: 'none'
-              }}>
-                <h1 style={{ margin: 0, fontSize: '60px', letterSpacing: '5px' }}>RACE</h1>
-                <div style={{ background: 'black', color: '#00ff88', padding: '5px', fontSize: '15px', fontWeight: 'bold' }}>
-                  ENTRY POINT
-                </div>
-              </div>
-            </Html>
-
-            {/* Nút bấm cũng biến thành 3D nằm trên bảng */}
-            {isNear && (
+          {/* Chữ và Nút chỉ hiện khi rảnh rỗi hoặc vừa xong */}
+          {(raceState === 'IDLE' || raceState === 'FINISHED') && (
+            <>
               <Html 
-                transform
+                transform 
                 distanceFactor={3.5} 
-                position={[0, -0.8, 0.22]}
+                position={[0, 0.5, 0.2]}
+                pointerEvents="none"
               >
-                <div 
-                  onClick={handleStart}
-                  style={{
-                    background: '#00ff88',
-                    color: 'black',
-                    padding: '10px 20px',
-                    borderRadius: '50px',
-                    fontWeight: 'bold',
-                    fontSize: '18px',
-                    cursor: 'pointer',
-                    boxShadow: '0 0 20px #00ff88',
-                    border: '2px solid black',
-                    transition: 'all 0.2s',
-                    transform: `scale(${uiScale})`
-                  }}
-                  onMouseOver={(e) => e.currentTarget.style.transform = `scale(${uiScale * 1.05})`}
-                  onMouseOut={(e) => e.currentTarget.style.transform = `scale(${uiScale})`}
-                >
-                  VÀO ĐUA NGAY (E)
+                <div style={{
+                  color: 'black',
+                  fontFamily: '"Arial Black", sans-serif',
+                  textAlign: 'center',
+                  width: '400px',
+                  userSelect: 'none'
+                }}>
+                  <h1 style={{ margin: 0, fontSize: '60px', letterSpacing: '5px' }}>RACE</h1>
+                  <div style={{ background: 'black', color: '#00ff88', padding: '5px', fontSize: '15px', fontWeight: 'bold' }}>
+                    ENTRY POINT
+                  </div>
                 </div>
               </Html>
-            )}
-          </group>
+
+              {isNear && (
+                <Html 
+                  transform
+                  distanceFactor={3.5} 
+                  position={[0, -0.8, 0.22]}
+                >
+                  <div 
+                    onClick={handleStart}
+                    style={{
+                      background: '#00ff88',
+                      color: 'black',
+                      padding: '10px 20px',
+                      borderRadius: '50px',
+                      fontWeight: 'bold',
+                      fontSize: '18px',
+                      cursor: 'pointer',
+                      boxShadow: '0 0 20px #00ff88',
+                      border: '2px solid black',
+                      transition: 'all 0.2s',
+                      transform: `scale(${uiScale})`
+                    }}
+                    onMouseOver={(e) => e.currentTarget.style.transform = `scale(${uiScale * 1.05})`}
+                    onMouseOut={(e) => e.currentTarget.style.transform = `scale(${uiScale})`}
+                  >
+                    VÀO ĐUA NGAY (E)
+                  </div>
+                </Html>
+              )}
+            </>
+          )}
         </group>
-      )}
+      </group>
     </>
   );
 };
