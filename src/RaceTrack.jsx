@@ -127,7 +127,7 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
   };
 
   return (
-    <group>
+    <>
       {/* Biển báo Billboard 2 cột cắm dưới đất */}
       {raceState === 'IDLE' && (
         <group 
@@ -217,7 +217,7 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
           </group>
         </group>
       )}
-    </group>
+    </>
   );
 };
 
@@ -313,10 +313,10 @@ const RaceTrack = ({
         />
       )}
 
-      <StartSensor position={[0, 0, 0]} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
+      <StartSensor position={position} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
       
       {/* Cảm biến vạch đích */}
-      {finishOffset && <FinishSensor position={[0, 0, 0]} offset={finishOffset} />}
+      {finishOffset && <FinishSensor position={position} offset={finishOffset} />}
 
       {raceState !== 'IDLE' && (
         <>
