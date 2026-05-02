@@ -774,7 +774,7 @@ function Game({ vehicleFolder, setVehicleFolder, debug }) {
   const lastRot = useRef([0, 0, 0]);
 
   // Tọa độ dịch chuyển xe vào đường đua (Bạn có thể chỉnh ở đây)
-  const teleportPos = [180, 1, -300];
+  const teleportPos = [172, 1, -295];
 
   const teleportToTrack = () => {
     // Phát một sự kiện để chiếc xe tự nhận lệnh dịch chuyển

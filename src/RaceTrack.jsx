@@ -206,21 +206,28 @@ const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack, sensorOffs
     
     scene.traverse((child) => {
       if (child.isMesh) {
-        // Bao gồm Road, Rails, Fences, Walls vào hệ thống vật lý
         const name = child.name.toLowerCase();
+        
+        // Luôn hiện tất cả các mesh để thấy mặt đường và trang trí
+        child.visible = true;
+        child.castShadow = true;
+        child.receiveShadow = true;
+
+        // Lọc tất cả các vật thể cần có va chạm (Hàng rào, Tường, và cả MẶT ĐƯỜNG)
         const isPhysicsObject = name.startsWith('ref') || 
                                 name.includes('rail') || 
                                 name.includes('fence') || 
                                 name.includes('wall') ||
                                 name.includes('circuit') ||
                                 name.includes('guard') ||
-                                name.includes('barri');
+                                name.includes('barri') ||
+                                name.includes('road') ||
+                                name.includes('asphalt') ||
+                                name.includes('floor') ||
+                                name.includes('ground') ||
+                                name.includes('track');
         
         if (isPhysicsObject) {
-          child.visible = true;
-          child.castShadow = true;
-          child.receiveShadow = true;
-          
           const geom = child.geometry;
           const posAttr = geom.attributes.position;
           if (posAttr) {
@@ -248,8 +255,6 @@ const RaceTrack = ({ position = [0, 0, 0], scale = 1.0, onEnterTrack, sensorOffs
               }
             }
           }
-        } else {
-          child.visible = false;
         }
       }
     });
