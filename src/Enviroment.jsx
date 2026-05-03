@@ -7,11 +7,11 @@ const WEATHER_PRESETS = {
   sunny: {
     label: '☀️ Nắng',
     fogColor: '#f0905a',
-    fogNear: 80,
-    fogFar: 300,
-    ambientIntensity: 0.2,
+    fogNear: 250,
+    fogFar: 600,
+    ambientIntensity: 0.5,
     ambientColor: '#fff5e0',
-    sunIntensity: 2.0,
+    sunIntensity: 1.0,
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
@@ -25,13 +25,13 @@ const WEATHER_PRESETS = {
   rainy: {
     label: '🌧️ Mưa',
     fogColor: '#6a7a8a',
-    fogNear: 20,
-    fogFar: 100,
+    fogNear: 30,
+    fogFar: 120,
     ambientIntensity: 0.6,
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 80000,
+    rainCount: 12000,
     rainLength: 0.8,
     rainSpread: 600,
     snowCount: 0,
@@ -43,8 +43,8 @@ const WEATHER_PRESETS = {
   snowy: {
     label: '❄️ Tuyết',
     fogColor: '#dce8f5',
-    fogNear: 15,
-    fogFar: 80,
+    fogNear: 20,
+    fogFar: 90,
     ambientIntensity: 0.8,
     ambientColor: '#dce8ff',
     sunIntensity: 0.5,
@@ -61,8 +61,8 @@ const WEATHER_PRESETS = {
   foggy: {
     label: '🌫️ Sương Mù',
     fogColor: '#c8c8c0',
-    fogNear: 5,
-    fogFar: 40,
+    fogNear: 15,
+    fogFar: 60,
     ambientIntensity: 0.5,
     ambientColor: '#d0d0c8',
     sunIntensity: 0.2,
@@ -76,6 +76,24 @@ const WEATHER_PRESETS = {
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
+  night: {
+    label: '🌙 Ban Đêm',
+    fogColor: '#030308',
+    fogNear: 30,
+    fogFar: 70,
+    ambientIntensity: 0.2,
+    ambientColor: '#404060',
+    sunIntensity: 0.1,
+    sunColor: '#202040',
+    rainCount: 0,
+    rainLength: 0.5,
+    rainSpread: 600,
+    snowCount: 0,
+    snowSize: 0.18,
+    snowOpacity: 0.85,
+    skyTop: '#010103',
+    skyBottom: '#050510',
+  },
 };
 
 // ─── LERP HELPER ─────────────────────────────────────────────────────────────
@@ -86,9 +104,10 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 150000;
+const MAX_RAIN = 15000;
 function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
   const mesh = useRef();
+  const currentCount = useRef(0);
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
   const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
 
@@ -104,7 +123,10 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
   }, []);
 
   useFrame((state, delta) => {
-    if (!mesh.current || count === 0) {
+    currentCount.current = lerpVal(currentCount.current, count, 0.005);
+    const activeCount = Math.floor(currentCount.current);
+
+    if (!mesh.current || activeCount === 0) {
       if (mesh.current) mesh.current.visible = false;
       return;
     }
@@ -115,7 +137,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
     const camZ = state.camera.position.z;
     const halfSpread = rainSpread / 2;
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < activeCount; i++) {
       // Rơi xuống
       const dy = vel[i] * delta;
       pos[i * 6 + 1] -= dy;
@@ -146,7 +168,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
-    mesh.current.geometry.setDrawRange(0, count * 2);
+    mesh.current.geometry.setDrawRange(0, activeCount * 2);
   });
 
   return (
@@ -170,9 +192,10 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 150000;
+const MAX_SNOW = 10000;
 function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) {
   const mesh = useRef();
+  const currentCount = useRef(0);
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
   const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);
 
@@ -186,7 +209,10 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
   }, []);
 
   useFrame((state, delta) => {
-    if (!mesh.current || count === 0) {
+    currentCount.current = lerpVal(currentCount.current, count, 0.005);
+    const activeCount = Math.floor(currentCount.current);
+
+    if (!mesh.current || activeCount === 0) {
       if (mesh.current) mesh.current.visible = false;
       return;
     }
@@ -198,7 +224,7 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
     const camZ = state.camera.position.z;
     const halfSpread = snowSpread / 2;
 
-    for (let i = 0; i < count; i++) {
+    for (let i = 0; i < activeCount; i++) {
       pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
       pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
 
@@ -215,7 +241,7 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
-    mesh.current.geometry.setDrawRange(0, count);
+    mesh.current.geometry.setDrawRange(0, activeCount);
   });
 
   return (
@@ -244,6 +270,9 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
 function SceneUpdater({ weather }) {
   const { scene } = useThree();
   const fogRef = useRef(null);
+  const ambientRef = useRef(null);
+  const dirRef1 = useRef(null);
+  const dirRef2 = useRef(null);
 
   useEffect(() => {
     if (!scene.fog) {
@@ -253,15 +282,34 @@ function SceneUpdater({ weather }) {
   }, []);
 
   useFrame(() => {
-    if (!fogRef.current) return;
-    const fog = fogRef.current;
-    const f = new THREE.Color(weather.fogColor);
-    fog.color.lerp(f, 0.05);
-    fog.near = lerpVal(fog.near, weather.fogNear, 0.05);
-    fog.far  = lerpVal(fog.far,  weather.fogFar,  0.05);
+    if (fogRef.current) {
+      const fog = fogRef.current;
+      const f = new THREE.Color(weather.fogColor);
+      fog.color.lerp(f, 0.005);
+      fog.near = lerpVal(fog.near, weather.fogNear, 0.005);
+      fog.far = lerpVal(fog.far, weather.fogFar, 0.005);
+    }
+    if (ambientRef.current) {
+      ambientRef.current.intensity = lerpVal(ambientRef.current.intensity, weather.ambientIntensity, 0.005);
+      ambientRef.current.color.lerp(new THREE.Color(weather.ambientColor), 0.005);
+    }
+    if (dirRef1.current) {
+      dirRef1.current.intensity = lerpVal(dirRef1.current.intensity, weather.sunIntensity, 0.005);
+      dirRef1.current.color.lerp(new THREE.Color(weather.sunColor), 0.005);
+    }
+    if (dirRef2.current) {
+      dirRef2.current.intensity = lerpVal(dirRef2.current.intensity, weather.sunIntensity * 0.3, 0.005);
+      dirRef2.current.color.lerp(new THREE.Color(weather.sunColor), 0.005);
+    }
   });
 
-  return null;
+  return (
+    <>
+      <ambientLight ref={ambientRef} intensity={weather.ambientIntensity} color={weather.ambientColor} />
+      <directionalLight ref={dirRef1} position={[10, 20, 10]} intensity={weather.sunIntensity} color={weather.sunColor} />
+      <directionalLight ref={dirRef2} position={[-10, 10, -10]} intensity={weather.sunIntensity * 0.3} color={weather.sunColor} />
+    </>
+  );
 }
 
 // ─── ENVIRONMENT COMPONENT (export mặc định) ─────────────────────────────────
@@ -269,8 +317,8 @@ export default function Environment({ weather }) {
   return (
     <>
       <SceneUpdater weather={weather} />
-      <Rain  count={weather.rainCount}  rainLength={weather.rainLength}  rainSpread={weather.rainSpread ?? 600} />
-      <Snow  count={weather.snowCount}  snowSize={weather.snowSize}  snowOpacity={weather.snowOpacity}  snowSpread={weather.rainSpread ?? 600} />
+      <Rain count={weather.rainCount} rainLength={weather.rainLength} rainSpread={weather.rainSpread ?? 600} />
+      <Snow count={weather.snowCount} snowSize={weather.snowSize} snowOpacity={weather.snowOpacity} snowSpread={weather.rainSpread ?? 600} />
     </>
   );
 }
@@ -279,40 +327,63 @@ export default function Environment({ weather }) {
 export function WeatherPanel({ weather, setWeather }) {
   const [isOpen, setIsOpen] = useState(false);
   const [mode, setMode] = useState('sunny');          // preset đang chọn
+  const [autoMode, setAutoMode] = useState(true);     // Tự động chuyển thời tiết
   const [manual, setManual] = useState({              // giá trị manual slider
-    fogNear:          WEATHER_PRESETS.sunny.fogNear,
-    fogFar:           WEATHER_PRESETS.sunny.fogFar,
+    fogNear: WEATHER_PRESETS.sunny.fogNear,
+    fogFar: WEATHER_PRESETS.sunny.fogFar,
     ambientIntensity: WEATHER_PRESETS.sunny.ambientIntensity,
-    rainCount:        WEATHER_PRESETS.sunny.rainCount,
-    rainLength:       WEATHER_PRESETS.sunny.rainLength,
-    rainSpread:       WEATHER_PRESETS.sunny.rainSpread,
-    snowCount:        WEATHER_PRESETS.sunny.snowCount,
-    snowSize:         WEATHER_PRESETS.sunny.snowSize,
-    snowOpacity:      WEATHER_PRESETS.sunny.snowOpacity,
+    rainCount: WEATHER_PRESETS.sunny.rainCount,
+    rainLength: WEATHER_PRESETS.sunny.rainLength,
+    rainSpread: WEATHER_PRESETS.sunny.rainSpread,
+    snowCount: WEATHER_PRESETS.sunny.snowCount,
+    snowSize: WEATHER_PRESETS.sunny.snowSize,
+    snowOpacity: WEATHER_PRESETS.sunny.snowOpacity,
   });
   const [isManualMode, setIsManualMode] = useState(false);
 
+  // Auto weather interval
+  useEffect(() => {
+    if (!autoMode) return;
+    const presets = Object.keys(WEATHER_PRESETS);
+    const interval = setInterval(() => {
+      setWeather(prev => {
+        // pick a random preset that is different from current
+        const currentKey = Object.keys(WEATHER_PRESETS).find(k => WEATHER_PRESETS[k].label === prev.label) || 'sunny';
+        let nextKey = currentKey;
+        while (nextKey === currentKey) {
+          nextKey = presets[Math.floor(Math.random() * presets.length)];
+        }
+        setMode(nextKey);
+        setIsManualMode(false);
+        return WEATHER_PRESETS[nextKey];
+      });
+    }, 36000); // 36 seconds
+    return () => clearInterval(interval);
+  }, [autoMode, setWeather]);
+
   // Áp dụng preset
   const applyPreset = useCallback((key) => {
+    setAutoMode(false);
     setMode(key);
     setIsManualMode(false);
     const p = WEATHER_PRESETS[key];
     setManual({
-      fogNear:          p.fogNear,
-      fogFar:           p.fogFar,
+      fogNear: p.fogNear,
+      fogFar: p.fogFar,
       ambientIntensity: p.ambientIntensity,
-      rainCount:        p.rainCount,
-      rainLength:       p.rainLength,
-      rainSpread:       p.rainSpread,
-      snowCount:        p.snowCount,
-      snowSize:         p.snowSize,
-      snowOpacity:      p.snowOpacity,
+      rainCount: p.rainCount,
+      rainLength: p.rainLength,
+      rainSpread: p.rainSpread,
+      snowCount: p.snowCount,
+      snowSize: p.snowSize,
+      snowOpacity: p.snowOpacity,
     });
     setWeather(p);
   }, [setWeather]);
 
   // Cập nhật từ slider thủ công
   const handleSlider = (key, value) => {
+    setAutoMode(false);
     setIsManualMode(true);
     const next = { ...manual, [key]: Number(value) };
     setManual(next);
@@ -381,6 +452,26 @@ export function WeatherPanel({ weather, setWeather }) {
               style={{ background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '16px' }}
             >✕</button>
           </div>
+
+          {/* Auto Toggle */}
+          <button
+            onClick={() => setAutoMode(!autoMode)}
+            style={{
+              width: '100%',
+              padding: '10px',
+              marginBottom: '12px',
+              borderRadius: '10px',
+              border: `2px solid ${autoMode ? '#44ffaa' : 'rgba(255,255,255,0.1)'}`,
+              background: autoMode ? 'rgba(60,220,120,0.2)' : 'rgba(255,255,255,0.05)',
+              color: autoMode ? '#ccffdd' : '#aaa',
+              fontSize: '13px',
+              fontWeight: 'bold',
+              cursor: 'pointer',
+              transition: 'all 0.2s',
+            }}
+          >
+            {autoMode ? '🔄 TỰ ĐỘNG RANDOM: BẬT' : '🔄 TỰ ĐỘNG RANDOM: TẮT'}
+          </button>
 
           {/* Preset buttons */}
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '8px', marginBottom: '16px' }}>

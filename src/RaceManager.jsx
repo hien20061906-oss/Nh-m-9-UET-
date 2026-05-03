@@ -10,6 +10,13 @@ export const RACE_STATES = {
 
 export const RaceContext = createContext();
 
+/**
+ * RaceManager — Quản lý state đua xe
+ * Lấy cơ chế từ MiniDrive CircuitArea.js:
+ * - STATE machine (IDLE/COUNTDOWN/RUNNING/FINISHED)
+ * - Checkpoint ordering enforcement
+ * - Timer precision dùng performance.now()
+ */
 const RaceManager = ({ children }) => {
   const [raceState, setRaceState] = useState(RACE_STATES.IDLE);
   const [leaderboard, setLeaderboard] = useState(() => {
@@ -32,6 +39,7 @@ const RaceManager = ({ children }) => {
   const [bestTime, setBestTime] = useState(leaderboard[0]?.time || null);
   const [countdown, setCountdown] = useState(null);
   const [currentCheckpoint, setCurrentCheckpoint] = useState(-1);
+  const [totalCheckpoints] = useState(3);
   const [playerName, setPlayerName] = useState('PLAYER');
   const [playerAvatar, setPlayerAvatar] = useState('👤');
   const startTime = useRef(0);
@@ -52,10 +60,9 @@ const RaceManager = ({ children }) => {
       const finalTime = (performance.now() - startTime.current) / 1000;
       currentTimeRef.current = finalTime;
       
-      sounds.current.finish.play();
-      sounds.current.applause.play();
+      try { sounds.current.finish.play(); } catch(e) {}
+      try { sounds.current.applause.play(); } catch(e) {}
       
-      // Cập nhật bảng xếp hạng với tên và avatar hiện tại
       setLeaderboard(prevList => {
         const newList = [...prevList, { name: playerName, time: finalTime, avatar: playerAvatar }]
           .sort((a, b) => a.time - b.time)
@@ -73,18 +80,19 @@ const RaceManager = ({ children }) => {
 
   const startRace = useCallback(() => {
     setRaceState(RACE_STATES.COUNTDOWN);
+    setCurrentCheckpoint(-1);
     setCountdown(3);
-    sounds.current.countdown1.play();
+    try { sounds.current.countdown1.play(); } catch(e) {}
     
     let count = 3;
     const interval = setInterval(() => {
       count -= 1;
       if (count > 0) {
         setCountdown(count);
-        sounds.current.countdown1.play();
+        try { sounds.current.countdown1.play(); } catch(e) {}
       } else if (count === 0) {
         setCountdown('GO!');
-        sounds.current.countdown2.play();
+        try { sounds.current.countdown2.play(); } catch(e) {}
         setRaceState(RACE_STATES.RUNNING);
         startTime.current = performance.now();
         currentTimeRef.current = 0;
@@ -94,11 +102,20 @@ const RaceManager = ({ children }) => {
     }, 1500);
   }, []);
 
+  /**
+   * onCheckpointReached — Checkpoint phải đạt ĐÚNG THỨ TỰ
+   * Nếu người chơi đi sai thứ tự checkpoint thì không tính.
+   */
   const onCheckpointReached = useCallback((index) => {
     if (raceState !== RACE_STATES.RUNNING) return;
     if (index === currentCheckpoint + 1) {
       setCurrentCheckpoint(index);
-      sounds.current.checkpoint.play();
+      try {
+        const snd = sounds.current.checkpoint;
+        snd.playbackRate = 1 + index * 0.06;
+        snd.currentTime = 0;
+        snd.play();
+      } catch(e) {}
     }
   }, [raceState, currentCheckpoint]);
 
@@ -109,7 +126,13 @@ const RaceManager = ({ children }) => {
     setCountdown(null);
   }, []);
 
-  // QUAN TRỌNG: Dùng useMemo để ngăn chặn việc re-render toàn bộ app khi context value thay đổi
+  const endRace = useCallback(() => {
+    setRaceState(RACE_STATES.IDLE);
+    currentTimeRef.current = 0;
+    setCurrentCheckpoint(-1);
+    setCountdown(null);
+  }, []);
+
   const contextValue = useMemo(() => ({
     raceState,
     currentTimeRef,
@@ -122,11 +145,13 @@ const RaceManager = ({ children }) => {
     setPlayerAvatar,
     countdown,
     currentCheckpoint,
+    totalCheckpoints,
     startRace,
     resetRace,
+    endRace,
     finishRace,
     onCheckpointReached
-  }), [raceState, bestTime, countdown, currentCheckpoint, startRace, resetRace, finishRace, onCheckpointReached]);
+  }), [raceState, bestTime, countdown, currentCheckpoint, totalCheckpoints, startRace, resetRace, endRace, finishRace, onCheckpointReached]);
 
   return (
     <RaceContext.Provider value={contextValue}>

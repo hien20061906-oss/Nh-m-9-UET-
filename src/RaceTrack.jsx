@@ -1,20 +1,27 @@
-import React, { useMemo, useEffect, useContext, useState, useRef } from 'react';
+import React, { useMemo, useEffect, useContext, useState, useRef, useCallback } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, Html } from '@react-three/drei';
 import { useTrimesh, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
 import { RaceContext } from './RaceManager';
 
-const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
+const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2], trackPosition = [0, 0, 0], trackScale = 1 }) => {
   const { onCheckpointReached, currentCheckpoint } = useContext(RaceContext);
   const isTarget = currentCheckpoint === index - 1;
   const isReached = currentCheckpoint >= index;
 
+  const worldPos = [
+    trackPosition[0] + position[0] * trackScale,
+    trackPosition[1] + position[1] * trackScale,
+    trackPosition[2] + position[2] * trackScale
+  ];
+  const worldArgs = [scale[0] * trackScale, scale[1] * trackScale, scale[2] * trackScale];
+
   const [ref] = useBox(() => ({
     isSensor: true,
-    position,
+    position: worldPos,
     rotation,
-    args: scale,
+    args: worldArgs,
     onCollide: (e) => {
       if (e.body.name === 'chassis-body' || e.contact.bi.name === 'chassis-body' || e.contact.bj.name === 'chassis-body') {
         onCheckpointReached(index);
@@ -23,24 +30,24 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
   }));
 
   return (
-    <group position={position} rotation={rotation}>
+    <group position={position} rotation={rotation} visible={false}>
       {/* Visual ring/gate */}
       <mesh scale={[scale[0], scale[1], 0.1]}>
         <boxGeometry />
-        <meshStandardMaterial 
-          color={isReached ? '#00ff88' : (isTarget ? '#ffcc00' : '#ffffff')} 
-          transparent 
+        <meshStandardMaterial
+          color={isReached ? '#00ff88' : (isTarget ? '#ffcc00' : '#ffffff')}
+          transparent
           opacity={isTarget ? 0.5 : (isReached ? 0.2 : 0.1)}
           emissive={isTarget ? '#ffcc00' : (isReached ? '#00ff88' : '#000000')}
           emissiveIntensity={isTarget ? 2 : 0.5}
         />
       </mesh>
       {/* Pillar markers */}
-      <mesh position={[-scale[0]/2, 0, 0]}>
+      <mesh position={[-scale[0] / 2, 0, 0]}>
         <cylinderGeometry args={[0.1, 0.1, scale[1]]} />
         <meshStandardMaterial color="#333" />
       </mesh>
-      <mesh position={[scale[0]/2, 0, 0]}>
+      <mesh position={[scale[0] / 2, 0, 0]}>
         <cylinderGeometry args={[0.1, 0.1, scale[1]]} />
         <meshStandardMaterial color="#333" />
       </mesh>
@@ -48,43 +55,84 @@ const Checkpoint = ({ position, rotation, index, scale = [5, 5, 0.5] }) => {
   );
 };
 
-const FinishSensor = ({ position, offset, radius = 10 }) => {
-  const { raceState, finishRace, currentTimeRef } = useContext(RaceContext);
-  
+/**
+ * FinishSensor — Cảm biến vạch đích
+ * 
+ * LOGIC ĐÚNG (lấy từ MiniDrive CircuitArea.js line 449-453):
+ * - Chỉ tính FINISH khi đã qua ĐỦ TẤT CẢ checkpoint (0, 1, 2)
+ * - Sau đó xe phải quay lại vạch xuất phát (chạy hết 1 vòng)
+ * - KHÔNG dùng timer để quyết định finish
+ * 
+ * startLinePos = tọa độ vạch xuất phát (cũng là vạch đích khi chạy vòng)
+ */
+const FinishSensor = ({ position, offset, radius = 10, startLinePos }) => {
+  const { raceState, finishRace } = useContext(RaceContext);
+  const hasLeftStart = useRef(false);
+
+  useEffect(() => {
+    if (raceState === 'RUNNING') {
+      hasLeftStart.current = false;
+    }
+  }, [raceState]);
+
   useFrame((state) => {
     if (raceState !== 'RUNNING') return;
-    
-    // Chỉ cho phép về đích sau khi đã đua được ít nhất 10 giây 
-    // (Để tránh việc vừa tele vào đã bị tính là về đích luôn)
-    if (currentTimeRef.current < 10) return;
 
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
 
-    // Lấy tọa độ thế giới của xe
+    car.updateWorldMatrix(true, false);
     const carPos = new THREE.Vector3();
     car.getWorldPosition(carPos);
 
-    // Tọa độ vạch đích
-    const finishPos = new THREE.Vector3(
-      position[0] + offset[0],
-      position[1] + offset[1],
-      position[2] + offset[2]
-    );
-    
+    // Vạch đích = vạch xuất phát (chạy 1 vòng quay lại)
+    const finishPos = startLinePos
+      ? new THREE.Vector3(startLinePos[0], startLinePos[1], startLinePos[2])
+      : new THREE.Vector3(
+        position[0] + offset[0],
+        position[1] + offset[1],
+        position[2] + offset[2]
+      );
+
     const dist = carPos.distanceTo(finishPos);
 
+    if (!hasLeftStart.current) {
+      if (dist > 15) {
+        hasLeftStart.current = true;
+        console.log("Rời khỏi vạch xuất phát!");
+      }
+      return;
+    }
+
     if (dist < radius) {
-      console.log("🏁 FINISH LINE CROSSED!");
+      console.log("🏁 FINISH! Đã chạy một vòng và quay lại vạch đích!");
       finishRace();
+      hasLeftStart.current = false;
     }
   });
 
+  // Visual: Chỉ hiện vạch đích sáng khi đã qua đủ checkpoint
   return (
-    <mesh position={[offset[0], offset[1], offset[2]]}>
-      <boxGeometry args={[radius * 2, 5, 1]} />
-      <meshBasicMaterial color="#00ff88" transparent opacity={0.1} />
-    </mesh>
+    <group visible={false}>
+      {/* Vạch đích tại vị trí xuất phát */}
+      {startLinePos && (
+        <mesh position={startLinePos}>
+          <boxGeometry args={[radius * 2, 3, 1]} />
+          <meshBasicMaterial
+            color={hasLeftStart.current ? '#00ff88' : '#ff4444'}
+            transparent
+            opacity={0.3}
+          />
+        </mesh>
+      )}
+      {/* Fallback: vạch đích tại offset */}
+      {!startLinePos && (
+        <mesh position={[offset[0], offset[1], offset[2]]}>
+          <boxGeometry args={[radius * 2, 5, 1]} />
+          <meshBasicMaterial color="#00ff88" transparent opacity={0.1} />
+        </mesh>
+      )}
+    </group>
   );
 };
 
@@ -95,12 +143,11 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
 
   useFrame((state) => {
     if (raceState !== 'IDLE') return;
-    
+
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
     if (!carRef) setCarRef(car);
 
-    // Ép cập nhật ma trận để lấy tọa độ chính xác tuyệt đối
     car.updateWorldMatrix(true, false);
     const carPos = new THREE.Vector3();
     car.getWorldPosition(carPos);
@@ -110,7 +157,7 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
       position[1] + offset[1],
       position[2] + offset[2]
     );
-    
+
     const dist = carPos.distanceTo(trackPos);
 
     if (dist < radius && !isNear) {
@@ -122,22 +169,31 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
     }
   });
 
-  const handleStart = () => {
-    // 1. Dịch chuyển xe vào vạch xuất phát NGAY LẬP TỨC
+  const handleStart = useCallback(() => {
+    if (raceState !== 'IDLE' || !isNear) return;
     onEnterTrack?.();
-    
-    // 2. Đợi 0.1 giây để xe "ổn định" vị trí rồi mới bắt đầu đếm ngược
     setTimeout(() => {
       startRace();
     }, 100);
-  };
+  }, [raceState, isNear, onEnterTrack, startRace]);
+
+  /**
+   * Lắng nghe phím E/F/Enter để vào đua
+   */
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.code === 'KeyE' || e.code === 'KeyF' || e.code === 'Enter') && raceState === 'IDLE' && isNear) {
+        handleStart();
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleStart, raceState, isNear]);
 
   return (
     <>
-      {/* Biển báo Billboard 2 cột cắm dưới đất */}
-      {/* Biển báo Billboard 2 cột cắm dưới đất - Luôn hiển thị cấu trúc bảng */}
-      <group 
-        position={[offset[0], offset[1], offset[2]]} 
+      <group
+        position={[offset[0], offset[1], offset[2]]}
         rotation={[0, rotation * (Math.PI / 180), 0]}
       >
         {/* Hai cột trụ 2 bên */}
@@ -149,8 +205,8 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
           <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
           <meshStandardMaterial color="#333" />
         </mesh>
-        
-        {/* Vòng tròn nhận diện (Đã ẩn theo yêu cầu) */}
+
+        {/* Vòng tròn nhận diện (ẩn) */}
         <group position={[0, 0.02, 0]} rotation={[-Math.PI / 2, 0, 0]}>
           <mesh>
             <ringGeometry args={[radius - 0.2, radius, 64]} />
@@ -158,26 +214,23 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
           </mesh>
         </group>
 
-        {/* Cấu trúc Bảng hiệu chính */}
+        {/* Bảng hiệu chính */}
         <group position={[0, 3, 0]}>
-          {/* Khung bảng */}
           <mesh>
             <boxGeometry args={[4.5, 3, 0.3]} />
             <meshStandardMaterial color="#111" />
           </mesh>
-          
-          {/* Mặt bảng phát sáng */}
+
           <mesh position={[0, 0, 0.16]}>
             <boxGeometry args={[4.2, 2.7, 0.05]} />
             <meshStandardMaterial color="#00ff88" emissive="#00ff88" emissiveIntensity={0.2} transparent opacity={0.9} />
           </mesh>
 
-          {/* Chữ và Nút chỉ hiện khi rảnh rỗi hoặc vừa xong */}
           {(raceState === 'IDLE' || raceState === 'FINISHED') && (
             <>
-              <Html 
-                transform 
-                distanceFactor={3.5} 
+              <Html
+                transform
+                distanceFactor={3.5}
                 position={[0, 0.5, 0.2]}
                 pointerEvents="none"
               >
@@ -196,12 +249,12 @@ const StartSensor = ({ position, onEnterTrack, radius = 8, offset = [0, 0, 0], u
               </Html>
 
               {isNear && (
-                <Html 
+                <Html
                   transform
-                  distanceFactor={3.5} 
-                  position={[0, -0.8, 0.22]}
+                  distanceFactor={3.5}
+                  position={[0, -0.3, 0.4]}
                 >
-                  <div 
+                  <div
                     onClick={handleStart}
                     style={{
                       background: '#00ff88',
@@ -236,52 +289,44 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
 
   return (
     <group position={position} rotation={[0, rotation * (Math.PI / 180), 0]}>
-      {/* Khung chính - Kim loại đen nhám */}
       <mesh position={[0, 2.5, 0]}>
         <boxGeometry args={[6.2, 5.2, 0.3]} />
         <meshStandardMaterial color="#0a0a0a" metalness={0.8} roughness={0.2} />
       </mesh>
-      
-      {/* Màn hình - Hiệu ứng kính Neon */}
+
       <mesh position={[0, 2.5, 0.16]}>
         <boxGeometry args={[5.8, 4.8, 0.05]} />
-        <meshStandardMaterial 
-          color="#001a1a" 
-          emissive="#003333" 
-          emissiveIntensity={1} 
-          transparent 
-          opacity={0.9} 
+        <meshStandardMaterial
+          color="#001a1a"
+          emissive="#003333"
+          emissiveIntensity={1}
+          transparent
+          opacity={0.9}
         />
       </mesh>
 
-      {/* Khung viền Neon rực rỡ - Tạo từ 4 thanh rỗng để không bị dấu X */}
       <group position={[0, 2.5, 0.18]}>
-        {/* Thanh trên */}
         <mesh position={[0, 2.45, 0]}>
           <boxGeometry args={[6.0, 0.05, 0.01]} />
           <meshBasicMaterial color="#00ffcc" />
         </mesh>
-        {/* Thanh dưới */}
         <mesh position={[0, -2.45, 0]}>
           <boxGeometry args={[6.0, 0.05, 0.01]} />
           <meshBasicMaterial color="#00ffcc" />
         </mesh>
-        {/* Thanh trái */}
         <mesh position={[-3, 0, 0]}>
           <boxGeometry args={[0.05, 5.0, 0.01]} />
           <meshBasicMaterial color="#00ffcc" />
         </mesh>
-        {/* Thanh phải */}
         <mesh position={[3, 0, 0]}>
           <boxGeometry args={[0.05, 5.0, 0.01]} />
           <meshBasicMaterial color="#00ffcc" />
         </mesh>
       </group>
 
-      {/* Nội dung bảng xếp hạng */}
-      <Html 
-        transform 
-        distanceFactor={4} 
+      <Html
+        transform
+        distanceFactor={4}
         position={[0, 2.4, 0.22]}
         style={{ pointerEvents: 'none' }}
       >
@@ -297,7 +342,6 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
           overflow: 'hidden',
           position: 'relative'
         }}>
-          {/* Scanline Effect */}
           <div style={{
             position: 'absolute',
             top: 0, left: 0, right: 0, bottom: 0,
@@ -322,8 +366,8 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
 
           <div style={{ width: '100%', flex: 1 }}>
             {leaderboard.map((entry, i) => (
-              <div key={i} style={{ 
-                display: 'flex', 
+              <div key={i} style={{
+                display: 'flex',
                 alignItems: 'center',
                 padding: '12px 15px',
                 marginBottom: '6px',
@@ -336,13 +380,13 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
                 <span style={{ width: '40px', fontWeight: 'bold', color: i < 3 ? '#00ffcc' : '#888' }}>
                   {i + 1}.
                 </span>
-                <div style={{ 
-                  width: '30px', 
-                  height: '30px', 
-                  background: '#222', 
-                  borderRadius: '50%', 
-                  display: 'flex', 
-                  alignItems: 'center', 
+                <div style={{
+                  width: '30px',
+                  height: '30px',
+                  background: '#222',
+                  borderRadius: '50%',
+                  display: 'flex',
+                  alignItems: 'center',
                   justifyContent: 'center',
                   marginRight: '15px',
                   border: `1px solid ${i < 3 ? '#00ffcc' : '#444'}`,
@@ -377,10 +421,6 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
         </div>
       </Html>
 
-      {/* Đèn chiếu từ dưới lên */}
-      <pointLight position={[0, 0.5, 1]} color="#00ffcc" intensity={2} distance={5} />
-
-      {/* Chân đế công nghệ cao */}
       <mesh position={[0, 0.1, 0]}>
         <boxGeometry args={[4, 0.2, 1.5]} />
         <meshStandardMaterial color="#111" />
@@ -399,7 +439,6 @@ const LeaderboardBoard = ({ position, rotation = 0 }) => {
 
 
 const PhysicsTrack = ({ vertices, indices, position }) => {
-  // Thành phần này chỉ được gọi khi đã có đủ dữ liệu vertices
   useTrimesh(() => ({
     args: [vertices, indices],
     position,
@@ -408,40 +447,51 @@ const PhysicsTrack = ({ vertices, indices, position }) => {
   return null;
 };
 
-const RaceTrack = ({ 
-  position = [0, 0, 0], 
-  scale = 1.0, 
-  onEnterTrack, 
-  sensorOffset = [0, 0, 0], 
-  sensorRadius = 8, 
-  uiScale = 1.0, 
+const RaceTrack = ({
+  position = [0, 0, 0],
+  scale = 1.0,
+  onEnterTrack,
+  sensorOffset = [0, 0, 0],
+  sensorRadius = 8,
+  uiScale = 1.0,
   sensorRotation = 0,
-  finishOffset = null 
+  finishOffset = null,
+  startLinePos = null
 }) => {
   const { scene } = useGLTF('/models/map/race_track.glb');
   const { raceState } = useContext(RaceContext);
-  
+
   const physData = useMemo(() => {
     if (!scene) return null;
 
     const v = [];
     const idx = [];
-    
+
     scene.traverse((child) => {
       if (child.isMesh) {
         const name = child.name.toLowerCase();
-        
+
         child.visible = true;
         child.castShadow = true;
         child.receiveShadow = true;
 
-        const isCorePhysics = name.includes('road') || 
-                              name.includes('track') || 
-                              name.includes('wall') || 
-                              name.includes('rail') ||
-                              name.includes('fence') ||
-                              name.includes('circuit');
-        
+        const isCorePhysics = name.includes('road') ||
+          name.includes('track') ||
+          name.includes('wall') ||
+          name.includes('rail') ||
+          name.includes('fence') ||
+          name.includes('circuit') ||
+          name.includes('obj') ||
+          name.includes('prop') ||
+          name.includes('rock') ||
+          name.includes('stone') ||
+          name.includes('building') ||
+          name.includes('barrel') ||
+          name.includes('barrier') ||
+          name.includes('pole') ||
+          name.includes('tower') ||
+          name.includes('bridge');
+
         if (isCorePhysics) {
           const geom = child.geometry;
           const posAttr = geom.attributes.position;
@@ -481,33 +531,32 @@ const RaceTrack = ({
   return (
     <group position={position} scale={[scale, scale, scale]}>
       <primitive object={scene} />
-      
+
       {physData && (
-        <PhysicsTrack 
-          vertices={physData.vertices} 
-          indices={physData.indices} 
-          position={position} 
+        <PhysicsTrack
+          vertices={physData.vertices}
+          indices={physData.indices}
+          position={position}
         />
       )}
 
       <StartSensor position={position} onEnterTrack={onEnterTrack} offset={sensorOffset} radius={sensorRadius} uiScale={uiScale} rotation={sensorRotation} />
-      
-      {/* Cảm biến vạch đích */}
-      {finishOffset && <FinishSensor position={position} offset={finishOffset} />}
 
-      {/* Bảng thành tích đặt cạnh vạch xuất phát */}
-      <LeaderboardBoard 
-        position={[sensorOffset[0] - 10, 0, sensorOffset[2] - 5]} 
-        rotation={sensorRotation + 90} 
+      {/* Cảm biến vạch đích — Chỉ kích hoạt khi đã qua đủ checkpoint */}
+      {finishOffset && (
+        <FinishSensor
+          position={position}
+          offset={finishOffset}
+          startLinePos={startLinePos}
+        />
+      )}
+
+      {/* Bảng thành tích */}
+      <LeaderboardBoard
+        position={[sensorOffset[0] - 10, 0, sensorOffset[2] - 5]}
+        rotation={sensorRotation + 90}
       />
 
-      {raceState !== 'IDLE' && (
-        <>
-          <Checkpoint position={[0, 0.5, 30]} index={0} />
-          <Checkpoint position={[40, 0.5, -20]} index={1} />
-          <Checkpoint position={[-10, 0.5, -60]} index={2} />
-        </>
-      )}
     </group>
   );
 };
