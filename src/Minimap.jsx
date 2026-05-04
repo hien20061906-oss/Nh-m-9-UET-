@@ -11,11 +11,11 @@ import * as THREE from 'three';
  * Lấy cơ chế từ MiniDrive Map.js line 37-45 & Respawns.js
  */
 export const TELEPORT_LOCATIONS = [
-  { name: 'Spawn', position: [0, 1, 0], rotation: 0, icon: '🏠', color: '#00f2ff', mapPos: { x: 50, y: 50 } },
-  { name: 'Đường Đua', position: [105, 1, -258], rotation: -Math.PI / 2, icon: '🏁', color: '#00ff88', mapPos: { x: 58, y: 30 } },
-  { name: 'Khu VNU', position: [-50, 1, 80], rotation: 0, icon: '🏫', color: '#ff6b6b', mapPos: { x: 30, y: 65 } },
-  { name: 'Khu UET', position: [60, 1, -100], rotation: -Math.PI / 2, icon: '🏛️', color: '#ffd93d', mapPos: { x: 62, y: 35 } },
-  { name: 'GĐ4', position: [-80, 1, -60], rotation: Math.PI / 4, icon: '📚', color: '#c084fc', mapPos: { x: 22, y: 40 } },
+  { name: 'Spawn', position: [10, 1, -180], rotation: 0, icon: '🏠', color: '#00f2ff', mapPos: { x: 47, y: 42 } },
+  { name: 'Đường Đua', position: [105, 1, -258], rotation: -Math.PI / 2, icon: '🏁', color: '#00ff88', mapPos: { x: 82, y: 18 } },
+  { name: 'Khu VNU', position: [-25, 1, -95], rotation: 0, icon: '🏫', color: '#ff6b6b', mapPos: { x: 42, y: 72 } },
+  { name: 'LAP', position: [10, 1, -350], rotation: 0, icon: '💻', color: '#ffd93d', mapPos: { x: 48, y: 13 } },
+  { name: 'Tháp', position: [-95, 1, -175], rotation: 0, icon: '🗼', color: '#c084fc', mapPos: { x: 14, y: 38 } },
 ];
 
 /**
@@ -102,12 +102,10 @@ const Minimap = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, []);
 
-  // Teleport handler — tự động hủy đua khi teleport ra ngoài đường đua
+  // Teleport handler — luôn hủy đua khi teleport (bất kể đi đâu)
   const handleTeleport = useCallback((location) => {
-    // Nếu đang đua mà teleport đi nơi khác (không phải đường đua) → hủy đua
-    if (location.name !== 'Đường Đua') {
-      window.dispatchEvent(new CustomEvent('race-force-end'));
-    }
+    // Hủy đua nếu đang đua
+    window.dispatchEvent(new CustomEvent('race-force-end'));
     window.dispatchEvent(new CustomEvent('teleport-start', {
       detail: {
         name: location.name,
@@ -119,7 +117,7 @@ const Minimap = () => {
   }, []);
 
   const playerMapPos = worldToMap(playerPos.x, playerPos.z);
-  const mapSize = expanded ? 380 : 130; // Giảm kích thước mặc định xuống 130 (PC)
+  const mapSize = expanded ? 380 : 140;
 
   return (
     <>
@@ -133,8 +131,8 @@ const Minimap = () => {
         }}
         style={{
           position: 'fixed',
-          top: expanded ? '50%' : '85px', // Mặc định ở trên bên trái
-          left: expanded ? '50%' : '15px',
+          top: expanded ? '50%' : '100px',
+          left: expanded ? '50%' : '25px',
           transform: expanded ? 'translate(-50%, -50%)' : 'none',
           width: `${mapSize}px`,
           height: `${mapSize}px`,
@@ -147,32 +145,35 @@ const Minimap = () => {
           boxShadow: '0 4px 30px rgba(0, 0, 0, 0.5), inset 0 0 30px rgba(0, 242, 255, 0.05)',
         }}
       >
-        {/* Background */}
+        {/* Background — Ảnh bản đồ thật */}
         <div className="minimap-bg" style={{
           position: 'absolute',
           inset: 0,
-          background: 'linear-gradient(135deg, #1a2332 0%, #0d1821 40%, #1a1520 70%, #0f1a25 100%)',
-        }} />
+        }}>
+          <img
+            src="/anhmap.webp"
+            alt="map"
+            style={{
+              width: '100%',
+              height: '100%',
+              objectFit: 'cover',
+              pointerEvents: 'none',
+              opacity: expanded ? 0.95 : 0.85,
+              transition: 'opacity 0.3s ease',
+            }}
+          />
+        </div>
 
-        {/* Grid overlay */}
+        {/* Dark overlay nhẹ để pin/player nổi bật hơn */}
         <div style={{
           position: 'absolute',
           inset: 0,
-          backgroundImage: `
-            linear-gradient(rgba(0,242,255,0.06) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(0,242,255,0.06) 1px, transparent 1px)
-          `,
-          backgroundSize: `${mapSize / 8}px ${mapSize / 8}px`,
+          background: expanded
+            ? 'rgba(0,0,0,0.15)'
+            : 'rgba(0,0,0,0.25)',
           pointerEvents: 'none',
+          transition: 'background 0.3s ease',
         }} />
-
-        {/* Road indicators */}
-        <svg style={{ position: 'absolute', inset: 0, pointerEvents: 'none' }} viewBox="0 0 100 100">
-          <path d="M 50 50 L 62 35" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" fill="none" strokeDasharray="2,2" />
-          <path d="M 62 35 L 55 30" stroke="rgba(0,255,136,0.2)" strokeWidth="0.8" fill="none" strokeDasharray="2,2" />
-          <path d="M 50 50 L 30 65" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" fill="none" strokeDasharray="2,2" />
-          <path d="M 50 50 L 22 40" stroke="rgba(255,255,255,0.15)" strokeWidth="0.8" fill="none" strokeDasharray="2,2" />
-        </svg>
 
         {/* Location Pins */}
         {TELEPORT_LOCATIONS.map((loc, i) => {

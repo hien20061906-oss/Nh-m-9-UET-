@@ -5,6 +5,7 @@ import {
 } from 'firebase/auth';
 import { doc, getDoc, setDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { playSound } from './SoundManager';
 
 export default function LoginScreen({ onLoginSuccess }) {
   const [mode, setMode] = useState('LOGIN'); // 'LOGIN', 'REGISTER'
@@ -116,10 +117,7 @@ export default function LoginScreen({ onLoginSuccess }) {
   };
 
   const playClickSound = () => {
-    // Optional: Add a subtle click sound if desired
-    // const audio = new Audio('/sounds/click.mp3');
-    // audio.volume = 0.2;
-    // audio.play().catch(() => {});
+    playSound('click', 0.3);
   };
 
   return (

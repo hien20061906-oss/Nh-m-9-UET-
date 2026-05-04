@@ -7,11 +7,11 @@ const WEATHER_PRESETS = {
   sunny: {
     label: '☀️ Nắng',
     fogColor: '#f0905a',
-    fogNear: 250,
-    fogFar: 600,
-    ambientIntensity: 0.5,
+    fogNear: 80,
+    fogFar: 300,
+    ambientIntensity: 0.2,
     ambientColor: '#fff5e0',
-    sunIntensity: 1.0,
+    sunIntensity: 2.0,
     sunColor: '#ffe0c0',
     rainCount: 0,
     rainLength: 0.5,
@@ -19,32 +19,34 @@ const WEATHER_PRESETS = {
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    lightningCount: 0,
     skyTop: '#87CEEB',
     skyBottom: '#f0905a',
   },
   rainy: {
     label: '🌧️ Mưa',
     fogColor: '#6a7a8a',
-    fogNear: 30,
-    fogFar: 120,
+    fogNear: 20,
+    fogFar: 100,
     ambientIntensity: 0.6,
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 12000,
+    rainCount: 80000,
     rainLength: 0.8,
     rainSpread: 600,
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    lightningCount: 3,
     skyTop: '#4a5a6a',
     skyBottom: '#6a7a8a',
   },
   snowy: {
     label: '❄️ Tuyết',
     fogColor: '#dce8f5',
-    fogNear: 20,
-    fogFar: 90,
+    fogNear: 15,
+    fogFar: 80,
     ambientIntensity: 0.8,
     ambientColor: '#dce8ff',
     sunIntensity: 0.5,
@@ -55,14 +57,15 @@ const WEATHER_PRESETS = {
     snowCount: 60000,
     snowSize: 0.22,
     snowOpacity: 0.9,
+    lightningCount: 0,
     skyTop: '#b0c8e8',
     skyBottom: '#dce8f5',
   },
   foggy: {
     label: '🌫️ Sương Mù',
     fogColor: '#c8c8c0',
-    fogNear: 15,
-    fogFar: 60,
+    fogNear: 5,
+    fogFar: 40,
     ambientIntensity: 0.5,
     ambientColor: '#d0d0c8',
     sunIntensity: 0.2,
@@ -73,6 +76,7 @@ const WEATHER_PRESETS = {
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    lightningCount: 0,
     skyTop: '#a0a098',
     skyBottom: '#c8c8c0',
   },
@@ -91,6 +95,7 @@ const WEATHER_PRESETS = {
     snowCount: 0,
     snowSize: 0.18,
     snowOpacity: 0.85,
+    lightningCount: 0,
     skyTop: '#010103',
     skyBottom: '#050510',
   },
@@ -104,29 +109,27 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 15000;
+const MAX_RAIN = 150000;
 function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
   const mesh = useRef();
-  const currentCount = useRef(0);
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
   const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
 
   useEffect(() => {
     for (let i = 0; i < MAX_RAIN; i++) {
       const x = (Math.random() - 0.5) * rainSpread;
-      const y = Math.random() * 40;
+      // Trải đều Y ngay từ đầu – không dồn cụm
+      const y = Math.random() * 45;
       const z = (Math.random() - 0.5) * rainSpread;
       positions[i * 6 + 0] = x; positions[i * 6 + 1] = y; positions[i * 6 + 2] = z;
       positions[i * 6 + 3] = x; positions[i * 6 + 4] = y - rainLength; positions[i * 6 + 5] = z;
-      velocities[i] = 15 + Math.random() * 10;
+      // Dải vận tốc rộng hơn nhiều – 5 – 35 – mỗi hạt rơi khác tốc độ
+      velocities[i] = 5 + Math.random() * 30;
     }
   }, []);
 
   useFrame((state, delta) => {
-    currentCount.current = lerpVal(currentCount.current, count, 0.005);
-    const activeCount = Math.floor(currentCount.current);
-
-    if (!mesh.current || activeCount === 0) {
+    if (!mesh.current || count === 0) {
       if (mesh.current) mesh.current.visible = false;
       return;
     }
@@ -137,7 +140,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
     const camZ = state.camera.position.z;
     const halfSpread = rainSpread / 2;
 
-    for (let i = 0; i < activeCount; i++) {
+    for (let i = 0; i < count; i++) {
       // Rơi xuống
       const dy = vel[i] * delta;
       pos[i * 6 + 1] -= dy;
@@ -161,14 +164,14 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
         pos[i * 6 + 5] += rainSpread;
       }
 
-      // Reset khi chạm đất
+      // Reset khi chạm đất – spawn ngay tại vị trí ngẫu nhiên trong không trung
       if (pos[i * 6 + 1] < 0) {
-        pos[i * 6 + 1] = 35 + Math.random() * 5;
+        pos[i * 6 + 1] = Math.random() * 45;   // phân bố đều toàn chiều cao
         pos[i * 6 + 4] = pos[i * 6 + 1] - rainLength;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
-    mesh.current.geometry.setDrawRange(0, activeCount * 2);
+    mesh.current.geometry.setDrawRange(0, count * 2);
   });
 
   return (
@@ -192,41 +195,43 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 10000;
+const MAX_SNOW = 150000;
 function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) {
   const mesh = useRef();
-  const currentCount = useRef(0);
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
   const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);
+  // Lưu vận tốc riêng từng hạt – không dùng random() mỗi frame
+  const speeds = useMemo(() => new Float32Array(MAX_SNOW), []);
 
   useEffect(() => {
     for (let i = 0; i < MAX_SNOW; i++) {
       positions[i * 3 + 0] = (Math.random() - 0.5) * snowSpread;
-      positions[i * 3 + 1] = Math.random() * 35;
+      // Trải đều Y – không khởi đầu cùng 1 mặt phẳng
+      positions[i * 3 + 1] = Math.random() * 40;
       positions[i * 3 + 2] = (Math.random() - 0.5) * snowSpread;
-      drifts[i] = (Math.random() - 0.5) * 0.5;
+      drifts[i] = (Math.random() - 0.5) * 1.2;     // drift ngang rộng hơn
+      speeds[i] = 0.4 + Math.random() * 3.0;        // tốc độ rơi 0.4 – 3.4 mỗi hạt khác nhau
     }
   }, []);
 
   useFrame((state, delta) => {
-    currentCount.current = lerpVal(currentCount.current, count, 0.005);
-    const activeCount = Math.floor(currentCount.current);
-
-    if (!mesh.current || activeCount === 0) {
+    if (!mesh.current || count === 0) {
       if (mesh.current) mesh.current.visible = false;
       return;
     }
     mesh.current.visible = true;
     const pos = positions;
     const drift = drifts;
+    const spd = speeds;
     const t = Date.now() * 0.001;
     const camX = state.camera.position.x;
     const camZ = state.camera.position.z;
     const halfSpread = snowSpread / 2;
 
-    for (let i = 0; i < activeCount; i++) {
-      pos[i * 3 + 1] -= (1.5 + Math.random() * 0.5) * delta;
-      pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i) * 0.01;
+    for (let i = 0; i < count; i++) {
+      // Dùng speed riêng từng hạt – không gọi random() mỗi frame
+      pos[i * 3 + 1] -= spd[i] * delta;
+      pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i * 0.7) * 0.008;
 
       // Wrap X
       if (pos[i * 3 + 0] - camX > halfSpread) pos[i * 3 + 0] -= snowSpread;
@@ -236,12 +241,15 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
       if (pos[i * 3 + 2] - camZ > halfSpread) pos[i * 3 + 2] -= snowSpread;
       else if (pos[i * 3 + 2] - camZ < -halfSpread) pos[i * 3 + 2] += snowSpread;
 
+      // Reset về vị trí ngẫu nhiên trong không trung (không phải luôn Y=35)
       if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 1] = 35;
+        pos[i * 3 + 1] = Math.random() * 42;
+        // Đổi nhẹ speed để giữ đa dạng theo thời gian
+        spd[i] = 0.4 + Math.random() * 3.0;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
-    mesh.current.geometry.setDrawRange(0, activeCount);
+    mesh.current.geometry.setDrawRange(0, count);
   });
 
   return (
@@ -264,6 +272,139 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
       />
     </points>
   );
+}
+
+// ─── LIGHTNING EFFECT ─────────────────────────────────────────────────────────
+const MAX_LIGHTNING = 3000;
+
+// Sinh hình dạng tia sét zigzag mới
+function generateBoltPoints() {
+  const points = [];
+  const segments = 10 + Math.floor(Math.random() * 8);
+  const height = 35 + Math.random() * 25;
+  let x = 0, z = 0;
+  for (let s = 0; s <= segments; s++) {
+    const t = s / segments;
+    const jitter = s > 0 && s < segments ? (Math.random() - 0.5) * 8 : 0;
+    const jitterZ = s > 0 && s < segments ? (Math.random() - 0.5) * 5 : 0;
+    x += jitter;
+    z += jitterZ;
+    points.push(new THREE.Vector3(x, height * (1 - t), z));
+  }
+  return points;
+}
+
+function Lightning({ count = 0, spread = 600 }) {
+  const boltsRef = useRef([]);
+  const timersRef = useRef([]);
+  const groupRef = useRef();
+
+  useEffect(() => {
+    if (!groupRef.current) return;
+    // Xoá bolt cũ
+    while (groupRef.current.children.length > 0) {
+      const child = groupRef.current.children[0];
+      child.geometry?.dispose();
+      child.material?.dispose();
+      groupRef.current.remove(child);
+    }
+    boltsRef.current = [];
+    timersRef.current = [];
+
+    const clampedCount = Math.min(count, MAX_LIGHTNING);
+    for (let i = 0; i < clampedCount; i++) {
+      const geo = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+      const mat = new THREE.LineBasicMaterial({
+        color: '#ffffff',        // trắng lóa như sét thật
+        transparent: true,
+        opacity: 0,
+        depthWrite: false,
+      });
+      const line = new THREE.Line(geo, mat);
+      line.visible = false;
+      groupRef.current.add(line);
+      boltsRef.current.push({
+        line,
+        phase: 'idle',
+        flashTimer: 0,
+        doubleFlash: false,     // double-flash như sét thật
+        // mỗi bolt có cooldown hoàn toàn ngẫu nhiên 0.5s – 8s
+        cooldown: 0.5 + Math.random() * 7.5,
+      });
+      timersRef.current.push(Math.random() * 6); // stagger khởi đầu
+    }
+  }, [count, spread]);
+
+  useFrame((state, delta) => {
+    if (!groupRef.current || count === 0) return;
+    const camX = state.camera.position.x;
+    const camZ = state.camera.position.z;
+    const half = spread / 2;
+
+    boltsRef.current.forEach((bolt, i) => {
+      timersRef.current[i] -= delta;
+
+      if (bolt.phase === 'idle') {
+        if (timersRef.current[i] <= 0) {
+          // Vị trí ngẫu nhiên quanh camera
+          const rx = camX + (Math.random() - 0.5) * Math.min(half, 300);
+          const rz = camZ + (Math.random() - 0.5) * Math.min(half, 300);
+          // Tái sinh hình dạng tia sét mới mỗi lần đánh
+          bolt.line.geometry.dispose();
+          bolt.line.geometry = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+          bolt.line.position.set(rx, 0, rz);
+          bolt.line.visible = true;
+          bolt.line.material.opacity = 1.0;
+          bolt.phase = 'flash1';                          // flash lần 1
+          bolt.flashTimer = 0.04 + Math.random() * 0.06;
+          bolt.doubleFlash = Math.random() < 0.6;         // 60% có double-flash
+        }
+      } else if (bolt.phase === 'flash1') {
+        // Nhấp nháy cực nhanh – giả lập discharge
+        bolt.line.material.opacity = 0.85 + Math.sin(Date.now() * 0.08) * 0.15;
+        bolt.flashTimer -= delta;
+        if (bolt.flashTimer <= 0) {
+          if (bolt.doubleFlash) {
+            // Tắt nhanh rồi flash lại
+            bolt.line.material.opacity = 0;
+            bolt.line.visible = false;
+            bolt.phase = 'gap';
+            bolt.flashTimer = 0.03 + Math.random() * 0.04; // khoảng tối ngắn
+          } else {
+            bolt.phase = 'fade';
+          }
+        }
+      } else if (bolt.phase === 'gap') {
+        bolt.flashTimer -= delta;
+        if (bolt.flashTimer <= 0) {
+          // Flash lần 2: sáng lại
+          bolt.line.geometry.dispose();
+          bolt.line.geometry = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+          bolt.line.visible = true;
+          bolt.line.material.opacity = 1.0;
+          bolt.phase = 'flash2';
+          bolt.flashTimer = 0.03 + Math.random() * 0.05;
+        }
+      } else if (bolt.phase === 'flash2') {
+        bolt.line.material.opacity = 0.8 + Math.sin(Date.now() * 0.1) * 0.2;
+        bolt.flashTimer -= delta;
+        if (bolt.flashTimer <= 0) {
+          bolt.phase = 'fade';
+        }
+      } else if (bolt.phase === 'fade') {
+        bolt.line.material.opacity -= delta * 10; // tắt nhanh
+        if (bolt.line.material.opacity <= 0) {
+          bolt.line.material.opacity = 0;
+          bolt.line.visible = false;
+          bolt.phase = 'idle';
+          // Cooldown hoàn toàn ngẫu nhiên cho lần tiếp
+          timersRef.current[i] = 0.5 + Math.random() * 7.5;
+        }
+      }
+    });
+  });
+
+  return <group ref={groupRef} />;
 }
 
 // ─── SCENE UPDATER (nhận props và cập nhật scene Three.js) ───────────────────
@@ -319,6 +460,7 @@ export default function Environment({ weather }) {
       <SceneUpdater weather={weather} />
       <Rain count={weather.rainCount} rainLength={weather.rainLength} rainSpread={weather.rainSpread ?? 600} />
       <Snow count={weather.snowCount} snowSize={weather.snowSize} snowOpacity={weather.snowOpacity} snowSpread={weather.rainSpread ?? 600} />
+      <Lightning count={weather.lightningCount ?? 0} spread={weather.rainSpread ?? 600} />
     </>
   );
 }
@@ -338,13 +480,30 @@ export function WeatherPanel({ weather, setWeather }) {
     snowCount: WEATHER_PRESETS.sunny.snowCount,
     snowSize: WEATHER_PRESETS.sunny.snowSize,
     snowOpacity: WEATHER_PRESETS.sunny.snowOpacity,
+    lightningCount: WEATHER_PRESETS.sunny.lightningCount,
   });
   const [isManualMode, setIsManualMode] = useState(false);
+
+  useEffect(() => {
+    setManual({
+      fogNear: weather.fogNear,
+      fogFar: weather.fogFar,
+      ambientIntensity: weather.ambientIntensity,
+      rainCount: weather.rainCount,
+      rainLength: weather.rainLength,
+      rainSpread: weather.rainSpread ?? 600,
+      snowCount: weather.snowCount,
+      snowSize: weather.snowSize,
+      snowOpacity: weather.snowOpacity,
+      lightningCount: weather.lightningCount ?? 0,
+    });
+  }, [weather]);
 
   // Auto weather interval
   useEffect(() => {
     if (!autoMode) return;
-    const presets = Object.keys(WEATHER_PRESETS);
+    // Chỉ lấy các loại thời tiết ban ngày để random (loại bỏ 'night')
+    const presets = Object.keys(WEATHER_PRESETS).filter(k => k !== 'night');
     const interval = setInterval(() => {
       setWeather(prev => {
         // pick a random preset that is different from current
@@ -377,6 +536,7 @@ export function WeatherPanel({ weather, setWeather }) {
       snowCount: p.snowCount,
       snowSize: p.snowSize,
       snowOpacity: p.snowOpacity,
+      lightningCount: p.lightningCount,
     });
     setWeather(p);
   }, [setWeather]);
@@ -576,6 +736,14 @@ export function WeatherPanel({ weather, setWeather }) {
               min={0.1} max={1.0} step={0.05}
               onChange={v => handleSlider('snowOpacity', v)}
               color="#eef5ff"
+            />
+
+            <SliderRow
+              label="⚡ Số tia sét"
+              value={manual.lightningCount}
+              min={0} max={30000} step={10}
+              onChange={v => handleSlider('lightningCount', Math.round(v))}
+              color="#ffe066"
             />
 
           </div>

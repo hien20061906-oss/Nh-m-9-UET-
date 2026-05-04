@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { playSound } from './SoundManager';
 
 /**
  * TeleportOverlay — Hiệu ứng chuyển cảnh khi teleport
@@ -17,6 +18,7 @@ const TeleportOverlay = () => {
     setLocationName(name || 'Đang di chuyển...');
     setActive(true);
     setPhase('fadeIn');
+    playSound('swoosh', 0.5);
 
     // Phase 1: Fade to black (500ms)
     setTimeout(() => {

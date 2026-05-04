@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
@@ -16,6 +16,7 @@ import LoginScreen from './LoginScreen';
 import { MapCoins, CoinParticles3D, CoinCollectUI } from './CoinSystem';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import { playSound, playRandomSound, startLoop, stopLoop, fadeVolume, BackgroundMusic, WeatherAudio, MasterMuteButton, setGlobalMuted } from './SoundManager';
 
 // ─── LOADING SCREEN ─────────────────────────────────────────────────────────
 const LoadingScreen = ({ onFinished }) => {
@@ -299,6 +300,48 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     audio.volume = 0.5;
     return audio;
   }, []);
+
+  // ─── ENGINE SOUND ─────────────────────────────────────────────────────
+  const engineAudio = useRef(null);
+  const nitroAudio = useRef(null);
+  const isNitroPlaying = useRef(false);
+
+  useEffect(() => {
+    // Khởi tạo tiếng động cơ (loop)
+    const eng = new Audio('/sounds/vehicle/engine/muscle car engine loop idle.mp3');
+    eng.loop = true;
+    eng.volume = 0.12;
+    eng.playbackRate = 0.8;
+    engineAudio.current = eng;
+    eng.play().catch(() => {});
+
+    return () => {
+      eng.pause();
+      eng.currentTime = 0;
+    };
+  }, []);
+
+  const velocity = useRef([0, 0, 0]);
+
+  // ─── COLLISION SOUND ──────────────────────────────────────────────────
+  const lastCollisionTime = useRef(0);
+  useEffect(() => {
+    // Dùng sự kiện va chạm từ cannon.js
+    const handleCollide = () => {
+      const now = performance.now();
+      if (now - lastCollisionTime.current < 500) return; // Cooldown 500ms
+      lastCollisionTime.current = now;
+      const spd = Math.sqrt(velocity.current[0] ** 2 + velocity.current[2] ** 2);
+      if (spd > 3) { // Chỉ phát khi tốc độ > 3
+        const vol = Math.min(0.5, spd * 0.03);
+        playRandomSound(['hit1', 'hit2', 'hit3', 'hit4', 'hitMetal'], vol);
+      }
+    };
+    window.addEventListener('vehicle-collision', handleCollide);
+    return () => {
+      window.removeEventListener('vehicle-collision', handleCollide);
+    };
+  }, []);
   const isHonking = useRef(false);
 
   // Sử dụng useCompoundBody
@@ -314,12 +357,18 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     angularDamping: 0.9,
     angularFactor: [0, 1, 0],
     name: 'chassis-body',
+    onCollide: (e) => {
+      // Dispatch event để collision sound handler bắt được
+      window.dispatchEvent(new CustomEvent('vehicle-collision'));
+    },
     shapes: [
-      // Lớp 1 (Gầm xe): Hình hộp mỏng (0.2) nằm sát gầm, giữ chức năng tương tác với mặt đường (Trimesh) mà không bị cạ gầm.
-      { type: 'Box', position: [0, 0, 0], rotation: [0, 0, 0], args: [chassisWidth, 0.2, chassisDepth] },
-      // Lớp 2 (Mũi xe & Đuôi xe): Dùng HÌNH CẦU (Sphere) thay vì Hộp. Trong Cannon.js, Hình Cầu va chạm với Trimesh (tường) là chắc chắn nhất, tuyệt đối không bị xuyên tường dù chạy tốc độ cao!
-      { type: 'Sphere', position: [0, 0.3, 0.6], args: [0.4] }, // Mũi xe
-      { type: 'Sphere', position: [0, 0.3, -0.6], args: [0.4] }  // Đuôi xe
+      // Lớp 1 (Gầm xe): Hình hộp mỏng (0.3).
+      { type: 'Box', position: [0, 0, 0], rotation: [0, 0, 0], args: [chassisWidth, 0.3, chassisDepth] },
+      
+      // Lớp 2: Chỉ dùng 2 hình cầu lớn ở đầu và đuôi để tối ưu hiệu năng (tránh lag).
+      // Đẩy sát ra mép xe hơn để tránh kẹt rào.
+      { type: 'Sphere', position: [0, 0.35, 0.9], args: [0.45] },  // Mũi xe (đã dịch lên trên)
+      { type: 'Sphere', position: [0, 0.35, -0.9], args: [0.45] } // Đuôi xe
     ]
   }));
 
@@ -384,6 +433,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const wheel2 = useRef(null);
   const wheel3 = useRef(null);
   const firstFrame = useRef(true);
+  const resetWasPressed = useRef(false);
 
   const [vehicle, vehicleApi] = useRaycastVehicle(() => ({
     chassisBody: chassisRef,
@@ -400,7 +450,6 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const chassisFile = modelFolder === 'alternative' ? 'chassis2.glb' : 'chassis.glb';
   const { scene: chassisScene } = useGLTF(`/models/car/${modelFolder}/${chassisFile}`);
 
-  const velocity = useRef([0, 0, 0]);
   useEffect(() => {
     const unsub = chassisApi.velocity.subscribe(v => { velocity.current = v; });
     return unsub;
@@ -416,62 +465,29 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const camPos = useRef(new THREE.Vector3(0, 5, 10));
   const camTarget = useRef(new THREE.Vector3());
 
-  // --- Mouse & Touch camera control ---
+  // --- Mouse camera control ---
   const camAngle = useRef({ x: 0, y: 0.35, dist: 7 });
-  const touchStart = useRef({ x: 0, y: 0 });
-
   useEffect(() => {
     let middleDown = false;
     const onWheel = (e) => {
       camAngle.current.dist = Math.max(3, Math.min(25, camAngle.current.dist + e.deltaY * 0.01));
     };
-    const onDown = (e) => { 
-      if (e.button === 1) middleDown = true; 
-    };
-    const onUp = (e) => { 
-      if (e.button === 1) middleDown = false; 
-    };
+    const onDown = (e) => { if (e.button === 1) middleDown = true; };
+    const onUp = (e) => { if (e.button === 1) middleDown = false; };
     const onMove = (e) => {
       if (!middleDown) return;
       camAngle.current.x -= e.movementX * 0.005;
       camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.2, camAngle.current.y + e.movementY * 0.005));
     };
-
-    // Hỗ trợ Touch cho điện thoại
-    const onTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        // Nếu chạm vào nút điều khiển thì không xoay camera
-        if (e.target.tagName === 'BUTTON') return;
-        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
-    const onTouchMove = (e) => {
-      if (e.touches.length === 1) {
-        if (e.target.tagName === 'BUTTON') return;
-        const dx = e.touches[0].clientX - touchStart.current.x;
-        const dy = e.touches[0].clientY - touchStart.current.y;
-        
-        camAngle.current.x -= dx * 0.008;
-        camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.2, camAngle.current.y + dy * 0.008));
-        
-        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
-
     window.addEventListener('wheel', onWheel);
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('touchstart', onTouchStart, { passive: false });
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
     };
   }, []);
 
@@ -496,18 +512,56 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
 
     const dt = Math.min(delta, 0.05); // clamp delta để tránh spike lag
 
-    // Reset xe
-    if (reset && chassisRef.current) {
-      chassisApi.position.set(chassisRef.current.position.x, chassisRef.current.position.y + 0.5, chassisRef.current.position.z);
-      chassisApi.velocity.set(0, 0, 0);
-      chassisApi.angularVelocity.set(0, 0, 0);
-      chassisApi.rotation.set(0, chassisRef.current.rotation.y, 0);
+    // Reset xe (Nhấn R): Dịch chuyển xe lên trên một chút và dựng thẳng xe lại
+    if (reset) {
+      if (!resetWasPressed.current && chassisRef.current) {
+        // Lấy tọa độ hiện tại
+        const pos = chassisRef.current.position;
+        const rot = chassisRef.current.rotation;
+        
+        // Reset: Nhấc lên 2m, giữ nguyên vị trí X, Z, reset rotation về thẳng đứng (chỉ giữ lại góc quay ngang)
+        chassisApi.position.set(pos.x, pos.y + 2, pos.z);
+        chassisApi.velocity.set(0, 0, 0);
+        chassisApi.angularVelocity.set(0, 0, 0);
+        chassisApi.rotation.set(0, rot.y, 0);
+        
+        resetWasPressed.current = true;
+      }
+    } else {
+      resetWasPressed.current = false;
     }
 
+    const speed = Math.sqrt(velocity.current[0] ** 2 + velocity.current[2] ** 2);
     const baseForce = boost ? 1500 : 800;
     // Tỉ lệ lực động cơ theo khối lượng để xe nặng (Rolls Royce) vẫn chạy nhanh
     const engineForce = baseForce * ((config.mass || 150) / 150);
-    const speed = Math.sqrt(velocity.current[0] ** 2 + velocity.current[2] ** 2);
+
+    // ─── Cập nhật âm thanh động cơ theo tốc độ ──────────────────────────
+    if (engineAudio.current) {
+      // playbackRate: 0.7 (idle) → 1.8 (max speed)
+      const targetRate = 0.7 + Math.min(speed * 0.04, 1.1);
+      engineAudio.current.playbackRate = THREE.MathUtils.lerp(engineAudio.current.playbackRate, targetRate, 0.1);
+      // Volume: tăng nhẹ khi ga
+      const targetVol = forward || backward ? Math.min(0.22, 0.12 + speed * 0.005) : 0.08;
+      engineAudio.current.volume = THREE.MathUtils.lerp(engineAudio.current.volume, targetVol, 0.1);
+    }
+
+    // ─── Âm thanh Nitro ──────────────────────────────────────────────────
+    if (boost && !isNitroPlaying.current) {
+      isNitroPlaying.current = true;
+      if (!nitroAudio.current) {
+        nitroAudio.current = new Audio('/sounds/vehicle/energy/Energy_-_force_field_8_loop.mp3');
+        nitroAudio.current.loop = true;
+      }
+      nitroAudio.current.volume = 0.15;
+      nitroAudio.current.play().catch(() => {});
+    } else if (!boost && isNitroPlaying.current) {
+      isNitroPlaying.current = false;
+      if (nitroAudio.current) {
+        nitroAudio.current.pause();
+        nitroAudio.current.currentTime = 0;
+      }
+    }
 
     // Khôi phục Anti-Drift: Thêm lực nén nhưng giới hạn tối đa (cap) để không làm sập phuộc xe
     const downforce = Math.min(speed * 60, 1800);
@@ -738,6 +792,18 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
   const k = usePlayerControls();
   const carLightRef = useRef();
 
+  // ─── HELICOPTER ROTOR SOUND ───────────────────────────────────────────
+  const rotorAudio = useRef(null);
+  useEffect(() => {
+    const audio = new Audio('/sounds/vehicle/spin/41051 Glass stone turning loop 09-full.mp3');
+    audio.loop = true;
+    audio.volume = 0.12;
+    audio.playbackRate = 0.6;
+    rotorAudio.current = audio;
+    audio.play().catch(() => {});
+    return () => { audio.pause(); audio.currentTime = 0; };
+  }, []);
+
   // ─── PHYSICS BODY (HỒN) ─────────────────────────────────────────────────────
   // Sử dụng Compound Body để có Hitbox chuẩn (Thân + Đuôi)
   const [physicsRef, api] = useCompoundBody(() => ({
@@ -766,52 +832,25 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     propSpeed: 0
   });
 
-  const touchStart = useRef({ x: 0, y: 0 });
-
   useEffect(() => {
-    let middleDown = false;
+    let down = false;
     const onWheel = (e) => camAngle.current.dist = Math.max(5, Math.min(50, camAngle.current.dist + e.deltaY * 0.05));
-    const onDown = (e) => { if (e.button === 1) middleDown = true; };
-    const onUp = (e) => { if (e.button === 1) middleDown = false; };
+    const onDown = (e) => { if (e.button === 1) down = true; };
+    const onUp = (e) => { if (e.button === 1) down = false; };
     const onMove = (e) => {
-      if (!middleDown) return;
+      if (!down) return;
       camAngle.current.x -= e.movementX * 0.005;
       camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + e.movementY * 0.005));
     };
-
-    const onTouchStart = (e) => {
-      if (e.touches.length === 1) {
-        if (e.target.tagName === 'BUTTON') return;
-        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
-    const onTouchMove = (e) => {
-      if (e.touches.length === 1) {
-        if (e.target.tagName === 'BUTTON') return;
-        const dx = e.touches[0].clientX - touchStart.current.x;
-        const dy = e.touches[0].clientY - touchStart.current.y;
-        
-        camAngle.current.x -= dx * 0.008;
-        camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + dy * 0.008));
-        
-        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
-      }
-    };
-
     window.addEventListener('wheel', onWheel);
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointermove', onMove);
-    window.addEventListener('touchstart', onTouchStart, { passive: false });
-    window.addEventListener('touchmove', onTouchMove, { passive: false });
-    
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointermove', onMove);
-      window.removeEventListener('touchstart', onTouchStart);
-      window.removeEventListener('touchmove', onTouchMove);
     };
   }, []);
 
@@ -827,6 +866,15 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     const SPEED = 20;
     const VERT_SPEED = 10;
     const YAW_SPEED = 1.5;
+
+    // Cập nhật âm thanh cánh quạt theo trạng thái bay
+    if (rotorAudio.current) {
+      const isFlying = controls.forward || controls.backward || controls.up || controls.down;
+      const targetRate = isFlying ? 1.2 : 0.6;
+      const targetVol = isFlying ? 0.2 : 0.1;
+      rotorAudio.current.playbackRate = THREE.MathUtils.lerp(rotorAudio.current.playbackRate, targetRate, 0.05);
+      rotorAudio.current.volume = THREE.MathUtils.lerp(rotorAudio.current.volume, targetVol, 0.05);
+    }
 
     // 1. Xử lý xoay (Yaw)
     if (controls.left) localState.current.rot += YAW_SPEED * delta;
@@ -1047,7 +1095,7 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
 
   // Tọa độ dịch chuyển xe VÀO ĐƯỜNG ĐUA (khi nhấn E / click bảng)
   // Đây là vạch xuất phát thực tế trên đường đua
-  const teleportPos = [172, 1, -295];
+  const teleportPos = [172, 1, -303];
 
   const teleportToTrack = () => {
     window.dispatchEvent(new CustomEvent('teleport-start', {
@@ -1158,7 +1206,19 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
   }, [userName, userAvatar, setPlayerName, setPlayerAvatar]);
 
   return (
-    <Physics gravity={[0, -9.81, 0]} allowSleep={false} defaultContactMaterial={{ friction: 0.3, restitution: 0.1 }}>
+    <Physics 
+      gravity={[0, -9.81, 0]} 
+      allowSleep={true} 
+      iterations={12} 
+      tolerance={0.002}
+      broadphase="SAP"
+      defaultContactMaterial={{ 
+        friction: 0.3, 
+        restitution: 0.1,
+        contactEquationStiffness: 1e7,
+        contactEquationRelaxation: 4
+      }}
+    >
       {debug ? <Debug color="white" scale={1.02}>{contents}</Debug> : contents}
     </Physics>
   );
@@ -1216,6 +1276,7 @@ export default function App() {
   const [showShop, setShowShop] = useState(false);
   const [debug, setDebug] = useState(false);
   const [weather, setWeather] = useState(WEATHER_PRESETS.sunny);
+  const [masterMuted, setMasterMuted] = useState(false);
   const [isRacing, setIsRacing] = useState(false);
 
   useEffect(() => {
@@ -1278,6 +1339,7 @@ export default function App() {
   const buyVehicle = (type) => {
     const price = vehiclePrices[type];
     if (gold >= price) {
+      playSound('ding', 0.5);
       const newGold = gold - price;
       setGold(newGold);
 
@@ -1301,6 +1363,15 @@ export default function App() {
       alert('Bạn không đủ vàng!');
     }
   };
+
+  // Toggle master mute
+  const toggleMasterMute = useCallback(() => {
+    setMasterMuted(prev => {
+      const next = !prev;
+      setGlobalMuted(next);
+      return next;
+    });
+  }, []);
 
   // ─── FIREBASE SYNC ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -1357,22 +1428,21 @@ export default function App() {
           unlocked={unlockedAchievements}
         />
 
-        {/* Nút mở Achievement Board */}
+        {/* Nút mở Achievement Board — Chuyển lên trên góc phải (dưới thời tiết) */}
         <button 
           onClick={() => setShowAchievements(true)}
-          className="achievement-btn"
           style={{
             position: 'fixed',
-            top: '85px', // Dưới Weather Panel
-            right: '20px',
-            width: '55px',
-            height: '55px',
+            top: '70px',
+            right: '15px',
+            width: '50px',
+            height: '50px',
             borderRadius: '50%',
             background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
-            border: '4px solid rgba(255,255,255,0.2)',
+            border: '3px solid rgba(255,255,255,0.2)',
             boxShadow: '0 8px 32px rgba(255, 170, 0, 0.4)',
             cursor: 'pointer',
-            fontSize: '28px',
+            fontSize: '24px',
             zIndex: 999,
             display: 'flex',
             alignItems: 'center',
@@ -1388,35 +1458,7 @@ export default function App() {
         <style>{`
           * { margin:0; padding:0; box-sizing:border-box; }
           body { overflow:hidden; }
-
-          /* Tối ưu cho Điện thoại (Mobile) */
-          @media (max-width: 768px) {
-            .top-bar { 
-              top: 10px !important; 
-              left: 10px !important; 
-              transform: scale(0.8); 
-              transform-origin: top left;
-              z-index: 1001;
-            }
-            .achievement-btn {
-              top: 75px !important; 
-              right: 15px !important;
-              width: 45px !important;
-              height: 45px !important;
-              font-size: 20px !important;
-            }
-            #minimap-container {
-              top: 70px !important; 
-              left: 10px !important;
-              width: 90px !important; /* Bản đồ siêu nhỏ trên Mobile */
-              height: 90px !important;
-            }
-            .weather-panel {
-              top: 10px !important;
-              right: 10px !important;
-              transform: scale(0.7);
-            }
-          }
+          
           .top-ui {
             position: absolute;
             top: 20px;
@@ -1721,8 +1763,8 @@ export default function App() {
               <span className="hud-gold">💰 {gold.toLocaleString()}</span>
             </div>
           </div>
-          <button className="menu-button" onClick={() => setShowMenu(true)}>Ga-ra</button>
-          <button className="shop-button" onClick={() => setShowShop(true)}>Shop 🛒</button>
+          <button className="menu-button" onClick={() => { playSound('click', 0.3); setShowMenu(true); }}>Ga-ra</button>
+          <button className="shop-button" onClick={() => { playSound('click', 0.3); setShowShop(true); }}>Shop 🛒</button>
           <button className="menu-button" onClick={() => setDebug(!debug)} style={{ background: debug ? '#ff4444' : 'rgba(255,255,255,0.15)', border: debug ? '1px solid #ff0000' : '1px solid rgba(255,255,255,0.2)' }}>
             Hitbox: {debug ? 'ON' : 'OFF'}
           </button>
@@ -1780,7 +1822,7 @@ export default function App() {
             <div className="vehicle-options">
               <div
                 className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''}`}
-                onClick={() => { startTransition(() => setVehicleFolder('default')); setShowMenu(false); }}
+                onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('default')); setShowMenu(false); }}
               >
                 <span className="vehicle-icon">🏎️</span>
                 <h3>Xe Mặc Định</h3>
@@ -1789,7 +1831,7 @@ export default function App() {
               {unlockedVehicles.includes('alternative') && (
                 <div
                   className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''}`}
-                  onClick={() => { startTransition(() => setVehicleFolder('alternative')); setShowMenu(false); }}
+                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('alternative')); setShowMenu(false); }}
                 >
                   <span className="vehicle-icon">🚓</span>
                   <h3>Xe Cảnh Sát</h3>
@@ -1798,7 +1840,7 @@ export default function App() {
               {unlockedVehicles.includes('helicopter') && (
                 <div
                   className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''}`}
-                  onClick={() => { startTransition(() => setVehicleFolder('helicopter')); setShowMenu(false); }}
+                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('helicopter')); setShowMenu(false); }}
                 >
                   <span className="vehicle-icon">🚁</span>
                   <h3>Máy Bay</h3>
@@ -1808,7 +1850,7 @@ export default function App() {
               {unlockedVehicles.includes('ship') && (
                 <div
                   className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''}`}
-                  onClick={() => { startTransition(() => setVehicleFolder('ship')); setShowMenu(false); }}
+                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('ship')); setShowMenu(false); }}
                 >
                   <span className="vehicle-icon">🚜</span>
                   <h3>Xe Tăng</h3>
@@ -1818,7 +1860,7 @@ export default function App() {
               {unlockedVehicles.includes('rolls_royce') && (
                 <div
                   className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''}`}
-                  onClick={() => { startTransition(() => setVehicleFolder('rolls_royce')); setShowMenu(false); }}
+                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('rolls_royce')); setShowMenu(false); }}
                 >
                   <span className="vehicle-icon">💎</span>
                   <h3>Rolls Royce</h3>
@@ -1911,6 +1953,9 @@ export default function App() {
         <CoinCollectUI />
         <Minimap />
         <TeleportOverlay />
+        <WeatherAudio weather={weather} masterMuted={masterMuted} />
+        <BackgroundMusic masterMuted={masterMuted} />
+        <MasterMuteButton muted={masterMuted} onToggle={toggleMasterMute} />
       </div>
     </RaceManager>
   );

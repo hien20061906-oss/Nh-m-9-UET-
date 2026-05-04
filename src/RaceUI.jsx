@@ -30,7 +30,7 @@ const TimerDisplay = () => {
 
   return (
     <div style={{ 
-      fontSize: '38px', 
+      fontSize: '24px', 
       fontWeight: '900', 
       fontFamily: '"Inter", monospace',
       letterSpacing: '2px',
@@ -138,7 +138,7 @@ const RaceUI = () => {
     window.dispatchEvent(new CustomEvent('teleport-start', {
       detail: {
         name: 'Vạch Xuất Phát',
-        position: [172, 1, -295],
+        position: [172, 1, -303],
         rotation: 0
       }
     }));
@@ -176,17 +176,20 @@ const RaceUI = () => {
       color: 'white',
       zIndex: 1000
     }}>
-      {/* Main Race HUD Panel */}
-      <div style={{
-        background: 'rgba(0,0,0,0.75)',
-        backdropFilter: 'blur(12px)',
-        padding: '16px 28px',
-        borderRadius: '16px',
-        border: '1px solid rgba(0,242,255,0.2)',
-        textAlign: 'center',
-        minWidth: '240px',
-        boxShadow: '0 8px 32px rgba(0,0,0,0.4), inset 0 1px 0 rgba(255,255,255,0.05)',
-      }}>
+    <div style={{
+      position: 'fixed',
+      top: '20px',
+      right: '20px',
+      background: 'rgba(0,0,0,0.8)',
+      backdropFilter: 'blur(10px)',
+      padding: '12px 20px',
+      borderRadius: '12px',
+      border: '1px solid rgba(0,242,255,0.3)',
+      textAlign: 'center',
+      minWidth: '180px',
+      boxShadow: '0 4px 20px rgba(0,0,0,0.5)',
+      pointerEvents: 'auto',
+    }}>
         {/* Race state label */}
         <div style={{ 
           fontSize: '10px', 

@@ -39,7 +39,7 @@ const RaceManager = ({ children }) => {
   const [bestTime, setBestTime] = useState(leaderboard[0]?.time || null);
   const [countdown, setCountdown] = useState(null);
   const [currentCheckpoint, setCurrentCheckpoint] = useState(-1);
-  const [totalCheckpoints] = useState(3);
+  const [totalCheckpoints, setTotalCheckpoints] = useState(0);
   const [playerName, setPlayerName] = useState('PLAYER');
   const [playerAvatar, setPlayerAvatar] = useState('👤');
   const startTime = useRef(0);
@@ -106,9 +106,10 @@ const RaceManager = ({ children }) => {
    * onCheckpointReached — Checkpoint phải đạt ĐÚNG THỨ TỰ
    * Nếu người chơi đi sai thứ tự checkpoint thì không tính.
    */
-  const onCheckpointReached = useCallback((index) => {
+  const onCheckpointReached = useCallback((index, cpData = null) => {
     if (raceState !== RACE_STATES.RUNNING) return;
     if (index === currentCheckpoint + 1) {
+      if (cpData) setTotalCheckpoints(cpData.length);
       setCurrentCheckpoint(index);
       try {
         const snd = sounds.current.checkpoint;
@@ -146,6 +147,7 @@ const RaceManager = ({ children }) => {
     countdown,
     currentCheckpoint,
     totalCheckpoints,
+    setTotalCheckpoints,
     startRace,
     resetRace,
     endRace,

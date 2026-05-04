@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback } from 'react'
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
 import { GLTFLoader } from 'three/examples/jsm/loaders/GLTFLoader';
+import { playSound } from './SoundManager';
 
 // ─── ACHIEVEMENT DEFINITIONS ─────────────────────────────────────────────────
 export const ACHIEVEMENT_DEFS = {
@@ -129,6 +130,7 @@ export function AchievementUI() {
       const { key } = e.detail;
       const def = ACHIEVEMENT_DEFS[key] || DEFAULT_ACHIEVEMENT(key);
       const id = ++toastIdRef.current;
+      playSound('achievementReward', 0.5);
       setToasts((prev) => [...prev, { id, ...def, key }]);
       setTimeout(() => {
         setToasts((prev) => prev.filter((t) => t.id !== id));
