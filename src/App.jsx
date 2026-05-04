@@ -1300,6 +1300,7 @@ export default function App() {
         {/* Nút mở Achievement Board */}
         <button 
           onClick={() => setShowAchievements(true)}
+          className="achievement-btn"
           style={{
             position: 'fixed',
             bottom: '215px',
@@ -1327,7 +1328,48 @@ export default function App() {
         <style>{`
           * { margin:0; padding:0; box-sizing:border-box; }
           body { overflow:hidden; }
-          
+
+          /* Tối ưu cho Điện thoại (Mobile) */
+          @media (max-width: 768px) {
+            .top-bar { 
+              top: 10px !important; 
+              left: 10px !important; 
+              transform: scale(0.85); 
+              transform-origin: top left;
+              z-index: 1001;
+            }
+            .achievement-btn {
+              bottom: auto !important;
+              top: 85px !important; /* Dưới Weather Panel */
+              right: 15px !important;
+              left: auto !important;
+              width: 50px !important;
+              height: 50px !important;
+              font-size: 24px !important;
+              z-index: 1002;
+            }
+            #minimap-container {
+              bottom: auto !important;
+              top: 75px !important; /* Dưới Profile/Top Bar */
+              left: 10px !important;
+              right: auto !important;
+              width: 135px !important;
+              height: 135px !important;
+              z-index: 1000;
+              border-radius: 12px !important;
+            }
+            .mobile-controls {
+              bottom: 30px !important;
+              z-index: 1005;
+            }
+            .weather-panel {
+              top: 10px !important;
+              right: 10px !important;
+              transform: scale(0.75);
+              transform-origin: top right;
+              z-index: 1000;
+            }
+          }
           .top-ui {
             position: absolute;
             top: 20px;
