@@ -1340,21 +1340,21 @@ export default function App() {
             }
             .achievement-btn {
               bottom: auto !important;
-              top: 85px !important; /* Dưới Weather Panel */
-              right: 15px !important;
+              top: 90px !important; /* Dưới Weather Panel */
+              right: 20px !important;
               left: auto !important;
-              width: 50px !important;
-              height: 50px !important;
-              font-size: 24px !important;
+              width: 45px !important;
+              height: 45px !important;
+              font-size: 20px !important;
               z-index: 1002;
             }
             #minimap-container {
               bottom: auto !important;
-              top: 75px !important; /* Dưới Profile/Top Bar */
-              left: 10px !important;
+              top: 85px !important; /* Dưới Profile/Top Bar */
+              left: 15px !important;
               right: auto !important;
-              width: 135px !important;
-              height: 135px !important;
+              width: 110px !important; /* Thu nhỏ thêm */
+              height: 110px !important;
               z-index: 1000;
               border-radius: 12px !important;
             }
