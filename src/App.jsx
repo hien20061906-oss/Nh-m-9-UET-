@@ -129,7 +129,7 @@ const LoadingScreen = ({ onFinished }) => {
         }
       `}</style>
 
-      <div className="neon-text">Neon Drift</div>
+      <div className="neon-text">Giảng Đường Trong Mơ</div>
 
       <div className="loading-container">
         <div className="loading-bar" style={{ width: `${progress}%` }} />

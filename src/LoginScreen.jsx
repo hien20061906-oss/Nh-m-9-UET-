@@ -331,7 +331,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
 
       <div className={`login-card ${isAnimating ? 'animating' : ''}`}>
-        <h1 className="game-title">Neon Drift</h1>
+        <h1 className="game-title">Giảng Đường Trong Mơ</h1>
         <p className="subtitle">Thế Giới Tốc Độ Của Bạn</p>
 
         <div className="tabs">
