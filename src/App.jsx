@@ -416,29 +416,62 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const camPos = useRef(new THREE.Vector3(0, 5, 10));
   const camTarget = useRef(new THREE.Vector3());
 
-  // --- Mouse camera control ---
+  // --- Mouse & Touch camera control ---
   const camAngle = useRef({ x: 0, y: 0.35, dist: 7 });
+  const touchStart = useRef({ x: 0, y: 0 });
+
   useEffect(() => {
     let middleDown = false;
     const onWheel = (e) => {
       camAngle.current.dist = Math.max(3, Math.min(25, camAngle.current.dist + e.deltaY * 0.01));
     };
-    const onDown = (e) => { if (e.button === 1) middleDown = true; };
-    const onUp = (e) => { if (e.button === 1) middleDown = false; };
+    const onDown = (e) => { 
+      if (e.button === 1) middleDown = true; 
+    };
+    const onUp = (e) => { 
+      if (e.button === 1) middleDown = false; 
+    };
     const onMove = (e) => {
       if (!middleDown) return;
       camAngle.current.x -= e.movementX * 0.005;
       camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.2, camAngle.current.y + e.movementY * 0.005));
     };
+
+    // Hỗ trợ Touch cho điện thoại
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        // Nếu chạm vào nút điều khiển thì không xoay camera
+        if (e.target.tagName === 'BUTTON') return;
+        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+    const onTouchMove = (e) => {
+      if (e.touches.length === 1) {
+        if (e.target.tagName === 'BUTTON') return;
+        const dx = e.touches[0].clientX - touchStart.current.x;
+        const dy = e.touches[0].clientY - touchStart.current.y;
+        
+        camAngle.current.x -= dx * 0.008;
+        camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.2, camAngle.current.y + dy * 0.008));
+        
+        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
     window.addEventListener('wheel', onWheel);
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointermove', onMove);
+    window.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
     };
   }, []);
 
@@ -733,25 +766,52 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     propSpeed: 0
   });
 
+  const touchStart = useRef({ x: 0, y: 0 });
+
   useEffect(() => {
-    let down = false;
+    let middleDown = false;
     const onWheel = (e) => camAngle.current.dist = Math.max(5, Math.min(50, camAngle.current.dist + e.deltaY * 0.05));
-    const onDown = (e) => { if (e.button === 1) down = true; };
-    const onUp = (e) => { if (e.button === 1) down = false; };
+    const onDown = (e) => { if (e.button === 1) middleDown = true; };
+    const onUp = (e) => { if (e.button === 1) middleDown = false; };
     const onMove = (e) => {
-      if (!down) return;
+      if (!middleDown) return;
       camAngle.current.x -= e.movementX * 0.005;
       camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + e.movementY * 0.005));
     };
+
+    const onTouchStart = (e) => {
+      if (e.touches.length === 1) {
+        if (e.target.tagName === 'BUTTON') return;
+        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+    const onTouchMove = (e) => {
+      if (e.touches.length === 1) {
+        if (e.target.tagName === 'BUTTON') return;
+        const dx = e.touches[0].clientX - touchStart.current.x;
+        const dy = e.touches[0].clientY - touchStart.current.y;
+        
+        camAngle.current.x -= dx * 0.008;
+        camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + dy * 0.008));
+        
+        touchStart.current = { x: e.touches[0].clientX, y: e.touches[0].clientY };
+      }
+    };
+
     window.addEventListener('wheel', onWheel);
     window.addEventListener('pointerdown', onDown);
     window.addEventListener('pointerup', onUp);
     window.addEventListener('pointermove', onMove);
+    window.addEventListener('touchstart', onTouchStart, { passive: false });
+    window.addEventListener('touchmove', onTouchMove, { passive: false });
+    
     return () => {
       window.removeEventListener('wheel', onWheel);
       window.removeEventListener('pointerdown', onDown);
       window.removeEventListener('pointerup', onUp);
       window.removeEventListener('pointermove', onMove);
+      window.removeEventListener('touchstart', onTouchStart);
+      window.removeEventListener('touchmove', onTouchMove);
     };
   }, []);
 
