@@ -17,13 +17,13 @@ export const ACHIEVEMENT_DEFS = {
     icon: '🏢',
   },
   'HUST': {
-    title: '🎓 Đại Học Bách Khoa',
+    title: '🎓 Đại Học Bách Khoa Hà Nội',
     description: 'Chào mừng đến HUST!',
     icon: '🎓',
   },
   'PDT+ctsv': {
     title: '📝 Phòng Đào Tạo',
-    description: 'Đến khu vực PĐT & CTSV!',
+    description: 'Khu vực PĐT & CTSV!',
     icon: '📝',
   },
   'residential_buildings': {
@@ -32,8 +32,8 @@ export const ACHIEVEMENT_DEFS = {
     icon: '🏠',
   },
   'TRUONG_AE_TAO_DO': {
-    title: '⚔️ Trường UET rẻ rách',
-    description: 'óC chó!',
+    title: '⚔️ Trường Đại Học Công Nghệ ',
+    description: 'UET!',
     icon: '⚔️',
   },
   'penguin': {

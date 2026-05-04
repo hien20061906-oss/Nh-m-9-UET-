@@ -122,6 +122,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   return (
     <div className="login-container">
+      <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`
         .login-container {
           position: fixed;
@@ -133,7 +134,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           align-items: center;
           justify-content: center;
           background: #050505;
-          font-family: 'Arial', sans-serif;
+          font-family: 'Chakra Petch', sans-serif;
           z-index: 9999;
           overflow: hidden;
         }
@@ -143,34 +144,35 @@ export default function LoginScreen({ onLoginSuccess }) {
           position: absolute;
           width: 200%;
           height: 200%;
-          top: -50%;
+          bottom: -50%;
           left: -50%;
           background-image: 
-            linear-gradient(rgba(255, 122, 47, 0.15) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(255, 122, 47, 0.15) 1px, transparent 1px);
-          background-size: 40px 40px;
-          transform: perspective(600px) rotateX(60deg) translateY(0);
-          animation: gridMove 3s linear infinite;
+            linear-gradient(rgba(112, 0, 255, 0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(112, 0, 255, 0.2) 1px, transparent 1px);
+          background-size: 50px 50px;
+          transform: perspective(500px) rotateX(60deg);
+          animation: gridMove 4s linear infinite;
           z-index: 0;
         }
 
         @keyframes gridMove {
-          0% { transform: perspective(600px) rotateX(60deg) translateY(0); }
-          100% { transform: perspective(600px) rotateX(60deg) translateY(40px); }
+          0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+          100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
         }
 
         .login-card {
           position: relative;
           z-index: 10;
-          background: #111;
-          border: 1px solid rgba(255, 122, 47, 0.4);
-          border-radius: 32px;
+          background: rgba(10, 10, 20, 0.9);
+          border: 2px solid #7000ff;
+          border-radius: 24px;
           padding: 40px;
           width: 95%;
-          max-width: 450px;
-          box-shadow: 0 20px 50px rgba(0,0,0,0.8), 0 0 40px rgba(255, 122, 47, 0.15);
+          max-width: 500px;
+          box-shadow: 0 0 30px rgba(112, 0, 255, 0.4), inset 0 0 15px rgba(112, 0, 255, 0.2);
           color: white;
           text-align: center;
+          backdrop-filter: blur(10px);
           transition: transform 0.3s ease, opacity 0.3s ease;
         }
 
@@ -180,28 +182,30 @@ export default function LoginScreen({ onLoginSuccess }) {
         }
 
         .game-title {
-          font-size: 42px;
-          font-weight: 900;
-          margin-bottom: 5px;
-          color: #fff;
+          font-size: 32px;
+          font-weight: 700;
+          line-height: 1.4;
+          margin-bottom: 10px;
           text-transform: uppercase;
-          letter-spacing: 4px;
-          text-shadow: 0 0 10px rgba(255, 122, 47, 0.8), 0 0 20px #FF7A2F, 0 0 30px #FF7A2F;
-          font-style: italic;
+          background: linear-gradient(90deg, #00f2ff, #7000ff);
+          -webkit-background-clip: text;
+          -webkit-text-fill-color: transparent;
+          filter: drop-shadow(0 0 10px rgba(0, 242, 255, 0.8));
+          letter-spacing: 2px;
         }
 
         .subtitle {
-          color: #FF7A2F;
-          font-size: 14px;
+          color: #00f2ff;
+          font-size: 10px;
           margin-bottom: 30px;
           text-transform: uppercase;
           letter-spacing: 2px;
-          font-weight: bold;
+          text-shadow: 0 0 5px #00f2ff;
         }
 
         .tabs {
           display: flex;
-          background: #222;
+          background: rgba(255,255,255,0.05);
           border-radius: 12px;
           padding: 5px;
           margin-bottom: 25px;
@@ -209,21 +213,22 @@ export default function LoginScreen({ onLoginSuccess }) {
 
         .tab {
           flex: 1;
-          padding: 12px;
+          padding: 14px 5px;
           text-align: center;
           cursor: pointer;
           border-radius: 8px;
-          font-weight: bold;
-          font-size: 14px;
+          font-size: 15px;
+          font-weight: 700;
           transition: all 0.3s ease;
-          color: #888;
+          color: #666;
           text-transform: uppercase;
         }
 
         .tab.active {
-          background: rgba(255, 122, 47, 0.2);
-          color: #FF7A2F;
-          border: 1px solid rgba(255, 122, 47, 0.5);
+          background: rgba(112, 0, 255, 0.3);
+          color: #fff;
+          border: 1px solid #7000ff;
+          box-shadow: 0 0 10px rgba(112, 0, 255, 0.5);
         }
 
         .input-group {
@@ -233,105 +238,106 @@ export default function LoginScreen({ onLoginSuccess }) {
 
         .input-group label {
           display: block;
-          font-size: 12px;
-          color: #aaa;
-          margin-bottom: 8px;
+          font-size: 8px;
+          color: #888;
+          margin-bottom: 10px;
           text-transform: uppercase;
-          font-weight: bold;
         }
 
         .input-field {
           width: 100%;
-          padding: 15px;
-          background: #222;
-          border: 2px solid #333;
+          padding: 12px;
+          background: rgba(0,0,0,0.4);
+          border: 1px solid #333;
           border-radius: 12px;
-          color: white;
+          color: #00f2ff;
           font-size: 16px;
+          font-family: 'Chakra Petch', sans-serif;
           transition: all 0.3s ease;
           text-align: center;
         }
 
         .input-field:focus {
           outline: none;
-          border-color: #FF7A2F;
-          box-shadow: 0 0 15px rgba(255, 122, 47, 0.2);
+          border-color: #00f2ff;
+          box-shadow: 0 0 15px rgba(0, 242, 255, 0.2);
         }
 
         .error-message {
           color: #ff4444;
-          font-size: 13px;
+          font-size: 8px;
           margin-bottom: 15px;
           min-height: 18px;
-          font-weight: bold;
         }
 
         .btn-primary {
           width: 100%;
           padding: 16px;
-          background: #FF7A2F;
+          background: linear-gradient(90deg, #7000ff, #00f2ff);
           border: none;
           border-radius: 16px;
           color: white;
           font-size: 16px;
-          font-weight: bold;
+          font-weight: 700;
+          font-family: 'Chakra Petch', sans-serif;
           cursor: pointer;
           transition: all 0.3s ease;
           text-transform: uppercase;
-          letter-spacing: 1px;
+          box-shadow: 0 5px 15px rgba(112, 0, 255, 0.4);
         }
 
         .btn-primary:hover {
-          background: #ff8e4d;
           transform: translateY(-2px);
-          box-shadow: 0 10px 20px rgba(255, 122, 47, 0.4);
+          filter: brightness(1.2);
+          box-shadow: 0 8px 25px rgba(112, 0, 255, 0.6);
         }
 
-        .btn-primary:active {
-          transform: translateY(1px);
+        .btn-primary:disabled {
+          opacity: 0.5;
+          cursor: not-allowed;
         }
 
         .divider {
           display: flex;
           align-items: center;
           margin: 25px 0;
-          color: #666;
-          font-size: 12px;
+          color: #444;
+          font-size: 8px;
           text-transform: uppercase;
-          font-weight: bold;
         }
 
         .divider::before, .divider::after {
           content: "";
           flex: 1;
           height: 1px;
-          background: #333;
+          background: #222;
           margin: 0 15px;
         }
 
         .btn-guest {
           width: 100%;
           padding: 14px;
-          background: #333;
-          border: none;
+          background: rgba(255,255,255,0.05);
+          border: 1px solid #333;
           border-radius: 12px;
-          color: white;
+          color: #888;
           font-size: 14px;
-          font-weight: bold;
+          font-family: 'Chakra Petch', sans-serif;
           cursor: pointer;
           transition: all 0.3s ease;
-          text-transform: uppercase;
         }
 
         .btn-guest:hover {
-          background: #444;
+          background: rgba(255,255,255,0.1);
+          color: #fff;
+          border-color: #666;
         }
       `}</style>
 
 
 
       <div className={`login-card ${isAnimating ? 'animating' : ''}`}>
-        <h1 className="game-title">Giảng Đường Trong Mơ</h1>
+        <h1 className="game-title">Giảng Đường<br/>Trong Mơ</h1>
         <p className="subtitle">Thế Giới Tốc Độ Của Bạn</p>
 
         <div className="tabs">
