@@ -119,7 +119,7 @@ const Minimap = () => {
   }, []);
 
   const playerMapPos = worldToMap(playerPos.x, playerPos.z);
-  const mapSize = expanded ? 380 : 180;
+  const mapSize = expanded ? 380 : 130; // Giảm kích thước mặc định xuống 130 (PC)
 
   return (
     <>
@@ -133,9 +133,9 @@ const Minimap = () => {
         }}
         style={{
           position: 'fixed',
-          bottom: expanded ? '50%' : '20px',
-          right: expanded ? '50%' : '20px',
-          transform: expanded ? 'translate(50%, 50%)' : 'none',
+          top: expanded ? '50%' : '85px', // Mặc định ở trên bên trái
+          left: expanded ? '50%' : '15px',
+          transform: expanded ? 'translate(-50%, -50%)' : 'none',
           width: `${mapSize}px`,
           height: `${mapSize}px`,
           borderRadius: expanded ? '20px' : '12px',

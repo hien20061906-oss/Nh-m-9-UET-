@@ -1363,16 +1363,16 @@ export default function App() {
           className="achievement-btn"
           style={{
             position: 'fixed',
-            bottom: '215px',
+            top: '85px', // Dưới Weather Panel
             right: '20px',
-            width: '60px',
-            height: '60px',
+            width: '55px',
+            height: '55px',
             borderRadius: '50%',
             background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
             border: '4px solid rgba(255,255,255,0.2)',
             boxShadow: '0 8px 32px rgba(255, 170, 0, 0.4)',
             cursor: 'pointer',
-            fontSize: '30px',
+            fontSize: '28px',
             zIndex: 999,
             display: 'flex',
             alignItems: 'center',
@@ -1394,40 +1394,27 @@ export default function App() {
             .top-bar { 
               top: 10px !important; 
               left: 10px !important; 
-              transform: scale(0.85); 
+              transform: scale(0.8); 
               transform-origin: top left;
               z-index: 1001;
             }
             .achievement-btn {
-              bottom: auto !important;
-              top: 90px !important; /* Dưới Weather Panel */
-              right: 20px !important;
-              left: auto !important;
+              top: 75px !important; 
+              right: 15px !important;
               width: 45px !important;
               height: 45px !important;
               font-size: 20px !important;
-              z-index: 1002;
             }
             #minimap-container {
-              bottom: auto !important;
-              top: 85px !important; /* Dưới Profile/Top Bar */
-              left: 15px !important;
-              right: auto !important;
-              width: 110px !important; /* Thu nhỏ thêm */
-              height: 110px !important;
-              z-index: 1000;
-              border-radius: 12px !important;
-            }
-            .mobile-controls {
-              bottom: 30px !important;
-              z-index: 1005;
+              top: 70px !important; 
+              left: 10px !important;
+              width: 90px !important; /* Bản đồ siêu nhỏ trên Mobile */
+              height: 90px !important;
             }
             .weather-panel {
               top: 10px !important;
               right: 10px !important;
-              transform: scale(0.75);
-              transform-origin: top right;
-              z-index: 1000;
+              transform: scale(0.7);
             }
           }
           .top-ui {
