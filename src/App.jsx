@@ -8,6 +8,7 @@ import { threeToCannon, ShapeType } from 'three-to-cannon';
 import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
 import RaceManager, { RaceContext, RACE_STATES, RaceTicker } from './RaceManager';
 import Minimap, { MinimapPlayerTracker } from './Minimap';
+import { AchievementSystem, AchievementUI, AchievementBoard } from './Achievement';
 import TeleportOverlay from './TeleportOverlay';
 import RaceTrack from './RaceTrack';
 import RaceUI from './RaceUI';
@@ -605,6 +606,10 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
 
     const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
     camera.lookAt(lookAtPos);
+    
+    // Lưu vị trí và góc xoay cuối cho Minimap, Achievement và chuyển đổi xe
+    lastPos.current = [currentPosition.x, currentPosition.y, currentPosition.z];
+    lastRot.current = [0, smoothRot.current, 0];
   });
 
   return (
@@ -968,7 +973,7 @@ useGLTF.preload('/models/car/rolls_royce/wheel.glb');
 useGLTF.preload('/models/car/ship/chassis.glb');
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
-function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userAvatar, gold, setGold }) {
+function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userAvatar, gold, setGold, unlockedAchievements, setUnlockedAchievements }) {
   const { raceState, resetRace, endRace, setPlayerName, setPlayerAvatar } = useContext(RaceContext);
   const controls = usePlayerControls();
 
@@ -1050,6 +1055,11 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
           });
         }} />
       )}
+      <AchievementSystem 
+        lastPos={lastPos} 
+        unlocked={unlockedAchievements} 
+        onUnlock={(key) => setUnlockedAchievements(prev => [...new Set([...prev, key])])}
+      />
     </>
   );
 
@@ -1166,6 +1176,8 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false); // Không hiện profile lúc đầu nữa vì đã có màn hình login
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isGameLoading, setIsGameLoading] = useState(true);
+  const [unlockedAchievements, setUnlockedAchievements] = useState([]);
+  const [showAchievements, setShowAchievements] = useState(false);
 
   const handleAvatarUpload = (e) => {
     const file = e.target.files[0];
@@ -1239,6 +1251,7 @@ export default function App() {
           await updateDoc(userRef, {
             gold,
             unlockedVehicles,
+            unlockedAchievements,
             userName,
             userAvatar
           });
@@ -1250,6 +1263,7 @@ export default function App() {
         // Fallback for non-logged in users (local save)
         localStorage.setItem('last_gold', gold);
         localStorage.setItem('last_vehicles', JSON.stringify(unlockedVehicles));
+        localStorage.setItem('game_achievements', JSON.stringify(unlockedAchievements));
       }
     };
 
@@ -1265,29 +1279,51 @@ export default function App() {
       <div style={{ width: '100vw', height: '100vh', background: `linear-gradient(to bottom, ${activeWeather.skyTop}, ${activeWeather.skyBottom})`, transition: 'background 8s ease, all 8s ease', margin: 0, padding: 0, overflow: 'hidden', position: 'relative', fontFamily: 'Arial, sans-serif' }}>
         {isGameLoading && <LoadingScreen onFinished={() => setIsGameLoading(false)} />}
         {!isLoggedIn && (
-          <LoginScreen onLoginSuccess={(name, isGuest, savedAvatar, savedGold, savedVehicles) => {
+          <LoginScreen onLoginSuccess={(name, isGuest, savedAvatar, savedGold, savedVehicles, savedAchievements) => {
             setUserName(name);
             setIsLoggedIn(true);
-            if (savedAvatar) {
-              setUserAvatar(savedAvatar);
-            } else {
-              setUserAvatar('👤'); // Reset if guest or no saved avatar
-            }
-            if (savedGold !== undefined) {
-              setGold(savedGold);
-            } else {
-              setGold(10000);
-            }
-            if (savedVehicles) {
-              setUnlockedVehicles(savedVehicles);
-            } else {
-              setUnlockedVehicles(['default']);
-            }
-            if (isGuest) {
-              setShowProfile(true);
-            }
+            if (savedAvatar) setUserAvatar(savedAvatar);
+            if (savedGold !== undefined) setGold(savedGold);
+            if (savedVehicles) setUnlockedVehicles(savedVehicles);
+            if (savedAchievements) setUnlockedAchievements(savedAchievements);
+            if (isGuest) setShowProfile(true);
           }} />
         )}
+
+        <AchievementUI />
+        <AchievementBoard 
+          isOpen={showAchievements} 
+          onClose={() => setShowAchievements(false)} 
+          unlocked={unlockedAchievements}
+        />
+
+        {/* Nút mở Achievement Board */}
+        <button 
+          onClick={() => setShowAchievements(true)}
+          style={{
+            position: 'fixed',
+            bottom: '215px',
+            right: '20px',
+            width: '60px',
+            height: '60px',
+            borderRadius: '50%',
+            background: 'linear-gradient(135deg, #FFD700 0%, #FFA500 100%)',
+            border: '4px solid rgba(255,255,255,0.2)',
+            boxShadow: '0 8px 32px rgba(255, 170, 0, 0.4)',
+            cursor: 'pointer',
+            fontSize: '30px',
+            zIndex: 999,
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            transition: 'transform 0.2s',
+          }}
+          onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1) rotate(15deg)'}
+          onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1) rotate(0deg)'}
+        >
+          🏆
+        </button>
+
         <style>{`
           * { margin:0; padding:0; box-sizing:border-box; }
           body { overflow:hidden; }
@@ -1774,6 +1810,8 @@ export default function App() {
               userAvatar={userAvatar}
               gold={gold}
               setGold={setGold}
+              unlockedAchievements={unlockedAchievements}
+              setUnlockedAchievements={setUnlockedAchievements}
             />
             <Preload all />
           </Suspense>

@@ -19,7 +19,7 @@ export default function LoginScreen({ onLoginSuccess }) {
 
   const handleGuestLogin = () => {
     playClickSound();
-    onLoginSuccess(`Khách_${Math.floor(Math.random() * 10000)}`, true, '👤', 10000, ['default']);
+    onLoginSuccess(`Khách_${Math.floor(Math.random() * 10000)}`, true, '👤', 10000, ['default'], []);
   };
 
   const handleSubmit = async (e) => {
@@ -48,12 +48,13 @@ export default function LoginScreen({ onLoginSuccess }) {
           avatar: '👤',
           gold: isAdmin ? 1000000 : 10000,
           unlockedVehicles: ['default'],
+          unlockedAchievements: [],
           createdAt: new Date().toISOString()
         };
         await setDoc(doc(db, "users", user.uid), userData);
 
         alert('Đăng ký thành công!');
-        onLoginSuccess(username, false, '👤', userData.gold, ['default']);
+        onLoginSuccess(username, false, '👤', userData.gold, ['default'], []);
       } else {
         // 1. Login with Firebase Auth
         const userCredential = await signInWithEmailAndPassword(auth, email, password);
@@ -70,7 +71,8 @@ export default function LoginScreen({ onLoginSuccess }) {
             false, 
             data.avatar || '👤', 
             data.gold ?? 10000, 
-            data.unlockedVehicles || ['default']
+            data.unlockedVehicles || ['default'],
+            data.unlockedAchievements || []
           );
         } else {
           // If profile missing, create it (fallback for admin migration)
@@ -78,10 +80,11 @@ export default function LoginScreen({ onLoginSuccess }) {
             userName: username,
             avatar: '👤',
             gold: username.toLowerCase().includes('admin') ? 1000000 : 10000,
-            unlockedVehicles: ['default']
+            unlockedVehicles: ['default'],
+            unlockedAchievements: []
           };
           await setDoc(doc(db, "users", user.uid), fallbackData);
-          onLoginSuccess(username, false, '👤', fallbackData.gold, ['default']);
+          onLoginSuccess(username, false, '👤', fallbackData.gold, ['default'], []);
         }
       }
     } catch (err) {

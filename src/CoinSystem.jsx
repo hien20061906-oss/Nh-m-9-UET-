@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
+import { useTexture } from '@react-three/drei';
 import * as THREE from 'three';
 
 /**
@@ -62,35 +63,34 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
   const carPosRef = useRef(new THREE.Vector3());
   const initialized = useRef(false);
   
-  const [texture, setTexture] = useState(null);
-
+  const texture = useTexture('/UET_Logo.png');
+  
+  // Cấu hình texture trực tiếp để khít đẹp vào đồng xu
   useEffect(() => {
-    const loader = new THREE.TextureLoader();
-    loader.load('/Logo UET.png', (tex) => {
-      tex.colorSpace = THREE.SRGBColorSpace;
-      tex.generateMipmaps = false;
+    if (texture && texture.image) {
+      texture.colorSpace = THREE.SRGBColorSpace;
       
-      // Xử lý tỷ lệ ảnh và Zoom để khít viền
-      const aspect = tex.image.width / tex.image.height;
-      const zoom = 1.45; // Tăng tỷ lệ zoom để khít hoàn toàn
+      // Tự động tính toán để ảnh luôn ở giữa bất kể kích thước
+      const aspect = texture.image.width / texture.image.height;
+      const zoom = 0.65; // Giảm repeat = Tăng kích thước hiển thị logo
       
       if (aspect > 1) {
-        tex.repeat.set((1 / aspect) / zoom, 1 / zoom);
-        tex.offset.set((1 - (1 / aspect) / zoom) / 2, (1 - (1 / zoom)) / 2);
+        // Ảnh nằm ngang
+        texture.repeat.set((1 / aspect) * zoom, zoom);
+        texture.offset.set((1 - (1 / aspect) * zoom) / 2, (1 - zoom) / 2);
       } else {
-        tex.repeat.set(1 / zoom, (aspect / zoom));
-        tex.offset.set((1 - (1 / zoom)) / 2, (1 - (aspect / zoom)) / 2);
+        // Ảnh nằm dọc hoặc vuông
+        texture.repeat.set(zoom, aspect * zoom);
+        texture.offset.set((1 - zoom) / 2, (1 - aspect * zoom) / 2);
       }
-      
-      setTexture(tex);
-    });
-  }, []);
+    }
+  }, [texture]);
 
   const { geometries, materials } = useMemo(() => ({
     geometries: {
-      disk: new THREE.CircleGeometry(0.8, 32),
-      torus: new THREE.TorusGeometry(0.8, 0.06, 12, 32),
-      shadow: new THREE.CircleGeometry(1.2, 16)
+      disk: new THREE.CircleGeometry(0.5, 16), // Giảm segments từ 32 xuống 16
+      torus: new THREE.TorusGeometry(0.5, 0.04, 8, 24), // Giảm complexity
+      shadow: new THREE.CircleGeometry(0.8, 12)
     },
     materials: {
       torus: new THREE.MeshStandardMaterial({ 
@@ -110,6 +110,8 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
 
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
+  const frameCount = useRef(0);
+
   useFrame((state) => {
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
@@ -118,6 +120,11 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
     const cp = carPosRef.current;
     const time = state.clock.elapsedTime;
 
+    // Tối ưu: Chỉ chạy logic nặng 2 khung hình 1 lần
+    frameCount.current++;
+    const isUpdateFrame = frameCount.current % 2 === 0;
+    if (!isUpdateFrame) return;
+    
     // Khởi tạo
     if (!initialized.current && cp.x !== 0) {
       initialized.current = true;

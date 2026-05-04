@@ -478,19 +478,14 @@ const RaceTrack = ({
         const isCorePhysics = name.includes('road') ||
           name.includes('track') ||
           name.includes('wall') ||
-          name.includes('rail') ||
-          name.includes('fence') ||
           name.includes('circuit') ||
-          name.includes('obj') ||
-          name.includes('prop') ||
-          name.includes('rock') ||
-          name.includes('stone') ||
           name.includes('building') ||
-          name.includes('barrel') ||
+          name.includes('bridge') ||
           name.includes('barrier') ||
-          name.includes('pole') ||
-          name.includes('tower') ||
-          name.includes('bridge');
+          name.includes('mesh') ||
+          name.includes('obj') ||
+          name.includes('rail') ||
+          name.includes('fence');
 
         if (isCorePhysics) {
           const geom = child.geometry;
