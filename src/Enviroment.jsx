@@ -32,7 +32,7 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 80000,
+    rainCount: 15000,
     rainLength: 0.8,
     rainSpread: 600,
     snowCount: 0,
@@ -54,7 +54,7 @@ const WEATHER_PRESETS = {
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 600,
-    snowCount: 60000,
+    snowCount: 15000,
     snowSize: 0.22,
     snowOpacity: 0.9,
     lightningCount: 0,
@@ -109,7 +109,7 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 150000;
+const MAX_RAIN = 20000;
 function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
@@ -118,15 +118,14 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
   useEffect(() => {
     for (let i = 0; i < MAX_RAIN; i++) {
       const x = (Math.random() - 0.5) * rainSpread;
-      // Trải đều Y ngay từ đầu – không dồn cụm
       const y = Math.random() * 45;
       const z = (Math.random() - 0.5) * rainSpread;
-      positions[i * 6 + 0] = x; positions[i * 6 + 1] = y; positions[i * 6 + 2] = z;
-      positions[i * 6 + 3] = x; positions[i * 6 + 4] = y - rainLength; positions[i * 6 + 5] = z;
-      // Dải vận tốc rộng hơn nhiều – 5 – 35 – mỗi hạt rơi khác tốc độ
-      velocities[i] = 5 + Math.random() * 30;
+      const idx = i * 6;
+      positions[idx] = x; positions[idx + 1] = y; positions[idx + 2] = z;
+      positions[idx + 3] = x; positions[idx + 4] = y - rainLength; positions[idx + 5] = z;
+      velocities[i] = 15 + Math.random() * 30;
     }
-  }, []);
+  }, [rainSpread, rainLength]);
 
   useFrame((state, delta) => {
     if (!mesh.current || count === 0) {
@@ -139,35 +138,37 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
     const camX = state.camera.position.x;
     const camZ = state.camera.position.z;
     const halfSpread = rainSpread / 2;
+    const dt = Math.min(delta, 0.05);
 
     for (let i = 0; i < count; i++) {
+      const idx = i * 6;
       // Rơi xuống
-      const dy = vel[i] * delta;
-      pos[i * 6 + 1] -= dy;
-      pos[i * 6 + 4] -= dy;
+      const dy = vel[i] * dt;
+      pos[idx + 1] -= dy;
+      pos[idx + 4] -= dy;
+
+      // Wrap Y
+      if (pos[idx + 1] < -5) {
+        pos[idx + 1] = 40;
+        pos[idx + 4] = 40 - rainLength;
+      }
 
       // Wrap X
-      if (pos[i * 6 + 0] - camX > halfSpread) {
-        pos[i * 6 + 0] -= rainSpread;
-        pos[i * 6 + 3] -= rainSpread;
-      } else if (pos[i * 6 + 0] - camX < -halfSpread) {
-        pos[i * 6 + 0] += rainSpread;
-        pos[i * 6 + 3] += rainSpread;
+      if (pos[idx] - camX > halfSpread) {
+        pos[idx] -= rainSpread;
+        pos[idx + 3] -= rainSpread;
+      } else if (pos[idx] - camX < -halfSpread) {
+        pos[idx] += rainSpread;
+        pos[idx + 3] += rainSpread;
       }
 
       // Wrap Z
-      if (pos[i * 6 + 2] - camZ > halfSpread) {
-        pos[i * 6 + 2] -= rainSpread;
-        pos[i * 6 + 5] -= rainSpread;
-      } else if (pos[i * 6 + 2] - camZ < -halfSpread) {
-        pos[i * 6 + 2] += rainSpread;
-        pos[i * 6 + 5] += rainSpread;
-      }
-
-      // Reset khi chạm đất – spawn ngay tại vị trí ngẫu nhiên trong không trung
-      if (pos[i * 6 + 1] < 0) {
-        pos[i * 6 + 1] = Math.random() * 45;   // phân bố đều toàn chiều cao
-        pos[i * 6 + 4] = pos[i * 6 + 1] - rainLength;
+      if (pos[idx + 2] - camZ > halfSpread) {
+        pos[idx + 2] -= rainSpread;
+        pos[idx + 5] -= rainSpread;
+      } else if (pos[idx + 2] - camZ < -halfSpread) {
+        pos[idx + 2] += rainSpread;
+        pos[idx + 5] += rainSpread;
       }
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
@@ -195,7 +196,7 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 150000;
+const MAX_SNOW = 20000;
 function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
@@ -221,32 +222,32 @@ function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) 
     }
     mesh.current.visible = true;
     const pos = positions;
-    const drift = drifts;
     const spd = speeds;
-    const t = Date.now() * 0.001;
+    const drift = drifts;
+    const dt = Math.min(delta, 0.05);
+    const t = state.clock.elapsedTime;
     const camX = state.camera.position.x;
     const camZ = state.camera.position.z;
     const halfSpread = snowSpread / 2;
 
     for (let i = 0; i < count; i++) {
-      // Dùng speed riêng từng hạt – không gọi random() mỗi frame
-      pos[i * 3 + 1] -= spd[i] * delta;
-      pos[i * 3 + 0] += drift[i] * delta + Math.sin(t + i * 0.7) * 0.008;
+      const idx = i * 3;
+      pos[idx + 1] -= spd[i] * dt;
+      // Tối ưu: Chỉ tính Sin một lần cho hiệu ứng đung đưa nhẹ
+      pos[idx] += (drift[i] * dt) + Math.sin(t + i) * 0.01;
+
+      // Wrap Y
+      if (pos[idx + 1] < 0) {
+        pos[idx + 1] = 40;
+      }
 
       // Wrap X
-      if (pos[i * 3 + 0] - camX > halfSpread) pos[i * 3 + 0] -= snowSpread;
-      else if (pos[i * 3 + 0] - camX < -halfSpread) pos[i * 3 + 0] += snowSpread;
+      if (pos[idx] - camX > halfSpread) pos[idx] -= snowSpread;
+      else if (pos[idx] - camX < -halfSpread) pos[idx] += snowSpread;
 
       // Wrap Z
-      if (pos[i * 3 + 2] - camZ > halfSpread) pos[i * 3 + 2] -= snowSpread;
-      else if (pos[i * 3 + 2] - camZ < -halfSpread) pos[i * 3 + 2] += snowSpread;
-
-      // Reset về vị trí ngẫu nhiên trong không trung (không phải luôn Y=35)
-      if (pos[i * 3 + 1] < 0) {
-        pos[i * 3 + 1] = Math.random() * 42;
-        // Đổi nhẹ speed để giữ đa dạng theo thời gian
-        spd[i] = 0.4 + Math.random() * 3.0;
-      }
+      if (pos[idx + 2] - camZ > halfSpread) pos[idx + 2] -= snowSpread;
+      else if (pos[idx + 2] - camZ < -halfSpread) pos[idx + 2] += snowSpread;
     }
     mesh.current.geometry.attributes.position.needsUpdate = true;
     mesh.current.geometry.setDrawRange(0, count);

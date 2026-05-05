@@ -179,10 +179,10 @@ const LoadingScreen = ({ onFinished }) => {
       `}</style>
 
       <div className="main-content">
-        <h1 className="neon-title">GIẢNG ĐƯỜNG<br/>TRONG MƠ</h1>
-        
+        <h1 className="neon-title">GIẢNG ĐƯỜNG<br />TRONG MƠ</h1>
+
         <div className="loading-label">LOADING...</div>
-        
+
         <div className="percentage">{Math.round(progress)}%</div>
 
         <div className="loading-container">
@@ -285,6 +285,54 @@ const Wheel = React.forwardRef(({ radius = 0.25, width = 0.24, leftSide, folder 
   );
 });
 
+// ─── VEHICLE CONFIGS (Module-level constant, tránh tạo lại mỗi lần render) ──
+const VEHICLE_CONFIGS = {
+  default: {
+    front: -0.55,
+    back: 0.55,
+    width: 0.55,
+    wheelY: 0,
+    chassisY: -0.25,
+    suspensionStiffness: 150,
+    dampingRelaxation: 6.0,
+    dampingCompression: 6.0,
+    mass: 150,
+  },
+  alternative: {
+    front: -0.82,
+    back: 0.82,
+    width: 0.4,
+    wheelY: -0.1, // Bánh xe nhỏ hơn/sâu hơn
+    chassisY: -0.25,
+    suspensionStiffness: 150,
+    dampingRelaxation: 6.0,
+    dampingCompression: 6.0,
+    mass: 150,
+  },
+  rolls_royce: {
+    front: -1.145,
+    back: 0.821,
+    width: 0.45,
+    wheelY: 0,
+    chassisY: -0.25,
+    suspensionStiffness: 150,
+    dampingRelaxation: 12.0,
+    dampingCompression: 12.0,
+    mass: 800,
+  },
+  ship: {
+    front: -0.8,
+    back: 0.8,
+    width: 0.7,
+    wheelY: 0.1, // Nhích lên một chút so với lúc nãy để không bị kẹt gầm
+    chassisY: -0.25,
+    suspensionStiffness: 400,
+    dampingRelaxation: 10.0,
+    dampingCompression: 10.0,
+    mass: 800,
+  }
+};
+
 const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const { raceState } = useContext(RaceContext);
   const lastChange = useRef(false);
@@ -297,54 +345,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   const chassisHeight = 0.2;
   const chassisDepth = 2.03;
 
-  const vehicleConfigs = {
-    default: {
-      front: -0.55,
-      back: 0.55,
-      width: 0.55,
-      wheelY: 0,
-      chassisY: -0.25,
-      suspensionStiffness: 150,
-      dampingRelaxation: 6.0,
-      dampingCompression: 6.0,
-      mass: 150,
-    },
-    alternative: {
-      front: -0.82,
-      back: 0.82,
-      width: 0.4,
-      wheelY: -0.1, // Bánh xe nhỏ hơn/sâu hơn
-      chassisY: -0.25,
-      suspensionStiffness: 150,
-      dampingRelaxation: 6.0,
-      dampingCompression: 6.0,
-      mass: 150,
-    },
-    rolls_royce: {
-      front: -1.145,
-      back: 0.821,
-      width: 0.45,
-      wheelY: 0,
-      chassisY: -0.25,
-      suspensionStiffness: 150,
-      dampingRelaxation: 12.0,
-      dampingCompression: 12.0,
-      mass: 800,
-    },
-    ship: {
-      front: -0.8,
-      back: 0.8,
-      width: 0.7,
-      wheelY: 0.1, // Nhích lên một chút so với lúc nãy để không bị kẹt gầm
-      chassisY: -0.25,
-      suspensionStiffness: 400,
-      dampingRelaxation: 10.0,
-      dampingCompression: 10.0,
-      mass: 800,
-    }
-  };
-
-  const config = vehicleConfigs[folder] || vehicleConfigs.default;
+  const config = VEHICLE_CONFIGS[folder] || VEHICLE_CONFIGS.default;
   const { front: fO, back: bO, width: oW, wheelY, chassisY } = config;
 
   // Âm thanh còi xe
@@ -366,7 +367,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     eng.volume = 0.12;
     eng.playbackRate = 0.8;
     engineAudio.current = eng;
-    eng.play().catch(() => {});
+    eng.play().catch(() => { });
 
     return () => {
       eng.pause();
@@ -417,7 +418,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     shapes: [
       // Lớp 1 (Gầm xe): Hình hộp mỏng (0.3).
       { type: 'Box', position: [0, 0, 0], rotation: [0, 0, 0], args: [chassisWidth, 0.3, chassisDepth] },
-      
+
       // Lớp 2: Chỉ dùng 2 hình cầu lớn ở đầu và đuôi để tối ưu hiệu năng (tránh lag).
       // Đẩy sát ra mép xe hơn để tránh kẹt rào.
       { type: 'Sphere', position: [0, 0.35, 0.9], args: [0.45] },  // Mũi xe (đã dịch lên trên)
@@ -472,7 +473,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
       ];
     }
 
-    // Các xe khác vẫn dùng công thức chung dựa trên vehicleConfigs
+    // Các xe khác vẫn dùng công thức chung dựa trên VEHICLE_CONFIGS
     return [
       { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [-oW, wheelY, fO], isFrontWheel: true },
       { radius: wheelRadius, directionLocal: [0, -1, 0], axleLocal: [-1, 0, 0], suspensionRestLength: 0.35, maxSuspensionForce: 100000, maxSuspensionTravel: 0.25, frictionSlip: 6.0, rollInfluence: 0.0, suspensionStiffness: config.suspensionStiffness, dampingRelaxation: config.dampingRelaxation, dampingCompression: config.dampingCompression, chassisConnectionPointLocal: [oW, wheelY, fO], isFrontWheel: true },
@@ -501,7 +502,9 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   // --- Models ---
   const modelFolder = folder;
   const chassisFile = modelFolder === 'alternative' ? 'chassis2.glb' : 'chassis.glb';
-  const { scene: chassisScene } = useGLTF(`/models/car/${modelFolder}/${chassisFile}`);
+  const { scene: chassisSceneRaw } = useGLTF(`/models/car/${modelFolder}/${chassisFile}`);
+  // Clone scene để tránh chia sẻ object 3D giữa các instance → gây biến dạng khi đổi xe
+  const chassisScene = useMemo(() => chassisSceneRaw.clone(true), [chassisSceneRaw]);
 
   useEffect(() => {
     const unsub = chassisApi.velocity.subscribe(v => { velocity.current = v; });
@@ -571,13 +574,13 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
         // Lấy tọa độ hiện tại
         const pos = chassisRef.current.position;
         const rot = chassisRef.current.rotation;
-        
+
         // Reset: Nhấc lên 2m, giữ nguyên vị trí X, Z, reset rotation về thẳng đứng (chỉ giữ lại góc quay ngang)
         chassisApi.position.set(pos.x, pos.y + 2, pos.z);
         chassisApi.velocity.set(0, 0, 0);
         chassisApi.angularVelocity.set(0, 0, 0);
         chassisApi.rotation.set(0, rot.y, 0);
-        
+
         resetWasPressed.current = true;
       }
     } else {
@@ -607,7 +610,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
         nitroAudio.current.loop = true;
       }
       nitroAudio.current.volume = 0.15;
-      nitroAudio.current.play().catch(() => {});
+      nitroAudio.current.play().catch(() => { });
     } else if (!boost && isNitroPlaying.current) {
       isNitroPlaying.current = false;
       if (nitroAudio.current) {
@@ -746,7 +749,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
 
     const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
     camera.lookAt(lookAtPos);
-    
+
     // Lưu vị trí và góc xoay cuối cho Minimap, Achievement và chuyển đổi xe
     lastPos.current = [currentPosition.x, currentPosition.y, currentPosition.z];
     lastRot.current = [0, smoothRot.current, 0];
@@ -853,7 +856,7 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     audio.volume = 0.12;
     audio.playbackRate = 0.6;
     rotorAudio.current = audio;
-    audio.play().catch(() => {});
+    audio.play().catch(() => { });
     return () => { audio.pause(); audio.currentTime = 0; };
   }, []);
 
@@ -1156,28 +1159,33 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     }));
   };
 
-  // Logic nạp phương tiện cực kỳ ổn định
-  const VehicleContainer = useMemo(() => {
-    // Ép tọa độ về trạng thái an toàn (Hạ xuống 0.5m)
-    lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
-    lastRot.current = [0, lastRot.current[1], 0];
-
-    if (vehicleFolder === 'helicopter') {
-      return <Helicopter key="heli" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
+  // ─── Ép tọa độ an toàn mỗi khi đổi xe (chạy trước khi xe mới mount) ───
+  useEffect(() => {
+    if (lastPos.current) {
+      lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
     }
+    if (lastRot.current) {
+      lastRot.current = [0, lastRot.current[1], 0];
+    }
+  }, [vehicleFolder]);
 
-    const isShip = vehicleFolder === 'ship';
-    return (
+  const countdownControls = { forward: false, backward: false, left: false, right: false, brake: true, reset: false, shift: false, horn: false };
+
+  let VehicleContainer;
+  if (vehicleFolder === 'helicopter') {
+    VehicleContainer = <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
+  } else {
+    VehicleContainer = (
       <Car
         key={vehicleFolder}
         folder={vehicleFolder}
         lastPos={lastPos}
         lastRot={lastRot}
-        controls={raceState === 'COUNTDOWN' ? { forward: false, backward: false, left: false, right: false, brake: true, reset: false, shift: false, horn: false } : controls}
+        controls={raceState === 'COUNTDOWN' ? countdownControls : controls}
         weather={weather}
       />
     );
-  }, [vehicleFolder, raceState]);
+  }
 
   const contents = (
     <>
@@ -1216,9 +1224,9 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
           });
         }} />
       )}
-      <AchievementSystem 
-        lastPos={lastPos} 
-        unlocked={unlockedAchievements} 
+      <AchievementSystem
+        lastPos={lastPos}
+        unlocked={unlockedAchievements}
         onUnlock={(key) => setUnlockedAchievements(prev => [...new Set([...prev, key])])}
       />
     </>
@@ -1259,14 +1267,14 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
   }, [userName, userAvatar, setPlayerName, setPlayerAvatar]);
 
   return (
-    <Physics 
-      gravity={[0, -9.81, 0]} 
-      allowSleep={true} 
-      iterations={12} 
+    <Physics
+      gravity={[0, -9.81, 0]}
+      allowSleep={true}
+      iterations={12}
       tolerance={0.002}
       broadphase="SAP"
-      defaultContactMaterial={{ 
-        friction: 0.3, 
+      defaultContactMaterial={{
+        friction: 0.3,
         restitution: 0.1,
         contactEquationStiffness: 1e7,
         contactEquationRelaxation: 4
@@ -1325,6 +1333,32 @@ const MobileControls = ({ vehicleFolder }) => {
 export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
   const [isPending, startTransition] = useTransition();
+  const vehicleLoadProgress = useVehicleLoadProgress();
+  // Cooldown 4 giây sau khi đổi xe — tránh switch quá nhanh gây lỗi physics
+  const [vehicleCooldown, setVehicleCooldown] = useState(0); // giây còn lại
+  const cooldownTimer = useRef(null);
+
+  const handleSelectVehicle = useCallback((folder) => {
+    if (vehicleCooldown > 0) return; // Đang trong cooldown, bỏ qua
+    playSound('click', 0.3);
+    startTransition(() => setVehicleFolder(folder));
+    setShowMenu(false);
+    // Bắt đầu đếm ngược 4 giây
+    setVehicleCooldown(4);
+    if (cooldownTimer.current) clearInterval(cooldownTimer.current);
+    cooldownTimer.current = setInterval(() => {
+      setVehicleCooldown(prev => {
+        if (prev <= 1) {
+          clearInterval(cooldownTimer.current);
+          cooldownTimer.current = null;
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+  }, [vehicleCooldown, startTransition]);
+
+  useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
   const [showMenu, setShowMenu] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [debug, setDebug] = useState(false);
@@ -1475,14 +1509,14 @@ export default function App() {
         )}
 
         <AchievementUI />
-        <AchievementBoard 
-          isOpen={showAchievements} 
-          onClose={() => setShowAchievements(false)} 
+        <AchievementBoard
+          isOpen={showAchievements}
+          onClose={() => setShowAchievements(false)}
           unlocked={unlockedAchievements}
         />
 
         {/* Nút mở Achievement Board — Chuyển lên trên góc phải (dưới thời tiết) */}
-        <button 
+        <button
           onClick={() => setShowAchievements(true)}
           style={{
             position: 'fixed',
@@ -1731,12 +1765,52 @@ export default function App() {
             flex-direction: column;
             align-items: center;
           }
-          .vehicle-option:hover { background: #2a2a2a; transform: translateY(-5px); }
+          .vehicle-option:hover:not(.loading) { background: #2a2a2a; transform: translateY(-5px); }
           .vehicle-option.selected { border-color: #FF7A2F; background: #332211; }
+          .vehicle-option.loading {
+            opacity: 0.6;
+            cursor: not-allowed;
+            border-color: #444;
+            filter: grayscale(0.4);
+          }
+          .load-bar {
+            width: 100%;
+            height: 4px;
+            background: #333;
+            border-radius: 2px;
+            overflow: hidden;
+            margin-top: 8px;
+          }
+          .load-fill {
+            height: 100%;
+            background: linear-gradient(90deg, #00f2ff, #7000ff);
+            border-radius: 2px;
+            transition: width 0.3s ease;
+            box-shadow: 0 0 6px #00f2ff88;
+          }
           
           .vehicle-icon { font-size: 40px; margin-bottom: 10px; }
           .vehicle-option h3 { color: white; font-size: 14px; margin: 0; }
           .price-tag { color: #FFD700; font-weight: bold; margin-top: 10px; font-size: 14px; }
+
+          .cooldown-badge {
+            display: inline-block;
+            margin-left: 10px;
+            padding: 3px 10px;
+            background: linear-gradient(90deg, #ff6600, #ff9900);
+            border-radius: 20px;
+            font-size: 0.75rem;
+            font-weight: bold;
+            color: white;
+            vertical-align: middle;
+            animation: pulseBadge 1s ease-in-out infinite;
+            box-shadow: 0 0 8px #ff990066;
+          }
+          @keyframes pulseBadge {
+            0%, 100% { opacity: 1; transform: scale(1); }
+            50% { opacity: 0.75; transform: scale(0.95); }
+          }
+
 
           .buy-btn, .save-btn {
             margin-top: 15px;
@@ -1868,59 +1942,126 @@ export default function App() {
           </div>
         </div>
 
+
         {/* Ga-ra Overlay */}
         <div className={`overlay ${showMenu ? 'active' : ''}`}>
-          <div className="menu-card">
-            <h2>Xe Đã Sở Hữu</h2>
-            <div className="vehicle-options">
-              <div
-                className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''}`}
-                onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('default')); setShowMenu(false); }}
-              >
-                <span className="vehicle-icon">🏎️</span>
-                <h3>Xe Mặc Định</h3>
+            <div className="menu-card">
+              <h2>
+                Xe Đã Sở Hữu
+                {vehicleCooldown > 0 && (
+                  <span className="cooldown-badge">
+                    ⏳ Chờ {vehicleCooldown}s
+                  </span>
+                )}
+              </h2>
+              <div className="vehicle-options">
+                {/* Xe Mặc Định — luôn available */}
+                {(() => {
+                  const pct = vehicleLoadProgress['default'] ?? 0;
+                  const ready = pct >= 100;
+                  const locked = vehicleCooldown > 0 || !ready;
+                  return (
+                    <div
+                      className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
+                      onClick={() => { if (locked) return; handleSelectVehicle('default'); }}
+                      title={vehicleCooldown > 0 ? `Chờ ${vehicleCooldown}s để đổi xe` : !ready ? `Đang tải... ${pct}%` : ''}
+                    >
+                      <span className="vehicle-icon">🏎️</span>
+                      <h3>Xe Mặc Định</h3>
+                      {!ready && <div className="load-bar"><div className="load-fill" style={{ width: `${pct}%` }} /></div>}
+                      {!ready && <small style={{ color: '#aaa', fontSize: '0.65rem' }}>Đang tải {pct}%</small>}
+                      {ready && vehicleCooldown > 0 && vehicleFolder !== 'default' && (
+                        <small style={{ color: '#ff9900', fontSize: '0.65rem' }}>🔒 Chờ {vehicleCooldown}s</small>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {unlockedVehicles.includes('alternative') && (() => {
+                  const pct = vehicleLoadProgress['alternative'] ?? 0;
+                  const ready = pct >= 100;
+                  const locked = vehicleCooldown > 0 || !ready;
+                  return (
+                    <div
+                      className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
+                      onClick={() => { if (locked) return; handleSelectVehicle('alternative'); }}
+                      title={vehicleCooldown > 0 ? `Chờ ${vehicleCooldown}s để đổi xe` : !ready ? `Đang tải... ${pct}%` : ''}
+                    >
+                      <span className="vehicle-icon">🚓</span>
+                      <h3>Xe Cảnh Sát</h3>
+                      {!ready && <div className="load-bar"><div className="load-fill" style={{ width: `${pct}%` }} /></div>}
+                      {!ready && <small style={{ color: '#aaa', fontSize: '0.65rem' }}>Đang tải {pct}%</small>}
+                      {ready && vehicleCooldown > 0 && vehicleFolder !== 'alternative' && (
+                        <small style={{ color: '#ff9900', fontSize: '0.65rem' }}>🔒 Chờ {vehicleCooldown}s</small>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {unlockedVehicles.includes('helicopter') && (() => {
+                  const pct = vehicleLoadProgress['helicopter'] ?? 0;
+                  const ready = pct >= 100;
+                  const locked = vehicleCooldown > 0 || !ready;
+                  return (
+                    <div
+                      className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
+                      onClick={() => { if (locked) return; handleSelectVehicle('helicopter'); }}
+                      title={vehicleCooldown > 0 ? `Chờ ${vehicleCooldown}s để đổi xe` : !ready ? `Đang tải... ${pct}%` : ''}
+                    >
+                      <span className="vehicle-icon">🚁</span>
+                      <h3>Máy Bay</h3>
+                      {!ready && <div className="load-bar"><div className="load-fill" style={{ width: `${pct}%` }} /></div>}
+                      {!ready && <small style={{ color: '#aaa', fontSize: '0.65rem' }}>Đang tải {pct}%</small>}
+                      {ready && vehicleCooldown > 0 && vehicleFolder !== 'helicopter' && (
+                        <small style={{ color: '#ff9900', fontSize: '0.65rem' }}>🔒 Chờ {vehicleCooldown}s</small>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {unlockedVehicles.includes('ship') && (() => {
+                  const pct = vehicleLoadProgress['ship'] ?? 0;
+                  const ready = pct >= 100;
+                  const locked = vehicleCooldown > 0 || !ready;
+                  return (
+                    <div
+                      className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
+                      onClick={() => { if (locked) return; handleSelectVehicle('ship'); }}
+                      title={vehicleCooldown > 0 ? `Chờ ${vehicleCooldown}s để đổi xe` : !ready ? `Đang tải... ${pct}%` : ''}
+                    >
+                      <span className="vehicle-icon">🚜</span>
+                      <h3>Xe Tăng</h3>
+                      {!ready && <div className="load-bar"><div className="load-fill" style={{ width: `${pct}%` }} /></div>}
+                      {!ready && <small style={{ color: '#aaa', fontSize: '0.65rem' }}>Đang tải {pct}%</small>}
+                      {ready && vehicleCooldown > 0 && vehicleFolder !== 'ship' && (
+                        <small style={{ color: '#ff9900', fontSize: '0.65rem' }}>🔒 Chờ {vehicleCooldown}s</small>
+                      )}
+                    </div>
+                  );
+                })()}
+
+                {unlockedVehicles.includes('rolls_royce') && (() => {
+                  const pct = vehicleLoadProgress['rolls_royce'] ?? 0;
+                  const ready = pct >= 100;
+                  const locked = vehicleCooldown > 0 || !ready;
+                  return (
+                    <div
+                      className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
+                      onClick={() => { if (locked) return; handleSelectVehicle('rolls_royce'); }}
+                      title={vehicleCooldown > 0 ? `Chờ ${vehicleCooldown}s để đổi xe` : !ready ? `Đang tải... ${pct}%` : ''}
+                    >
+                      <span className="vehicle-icon">💎</span>
+                      <h3>Rolls Royce</h3>
+                      {!ready && <div className="load-bar"><div className="load-fill" style={{ width: `${pct}%` }} /></div>}
+                      {!ready && <small style={{ color: '#aaa', fontSize: '0.65rem' }}>Đang tải {pct}%</small>}
+                      {ready && vehicleCooldown > 0 && vehicleFolder !== 'rolls_royce' && (
+                        <small style={{ color: '#ff9900', fontSize: '0.65rem' }}>🔒 Chờ {vehicleCooldown}s</small>
+                      )}
+                    </div>
+                  );
+                })()}
               </div>
-
-              {unlockedVehicles.includes('alternative') && (
-                <div
-                  className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''}`}
-                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('alternative')); setShowMenu(false); }}
-                >
-                  <span className="vehicle-icon">🚓</span>
-                  <h3>Xe Cảnh Sát</h3>
-                </div>
-              )}
-              {unlockedVehicles.includes('helicopter') && (
-                <div
-                  className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''}`}
-                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('helicopter')); setShowMenu(false); }}
-                >
-                  <span className="vehicle-icon">🚁</span>
-                  <h3>Máy Bay</h3>
-                </div>
-              )}
-
-              {unlockedVehicles.includes('ship') && (
-                <div
-                  className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''}`}
-                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('ship')); setShowMenu(false); }}
-                >
-                  <span className="vehicle-icon">🚜</span>
-                  <h3>Xe Tăng</h3>
-                </div>
-              )}
-
-              {unlockedVehicles.includes('rolls_royce') && (
-                <div
-                  className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''}`}
-                  onClick={() => { playSound('click', 0.3); startTransition(() => setVehicleFolder('rolls_royce')); setShowMenu(false); }}
-                >
-                  <span className="vehicle-icon">💎</span>
-                  <h3>Rolls Royce</h3>
-                </div>
-              )}
-            </div>
-            <button className="close-btn" onClick={() => setShowMenu(false)}>ĐÓNG</button>
+              <button className="close-btn" onClick={() => setShowMenu(false)}>ĐÓNG</button>
           </div>
         </div>
 
@@ -2012,4 +2153,75 @@ export default function App() {
       </div>
     </RaceManager>
   );
+}
+
+// ─── PRELOAD ALL VEHICLE MODELS ──────────────────────────────────────────────
+// Tải trước tất cả model GLB khi app khởi động để chuyển xe không bị lag
+useGLTF.preload('/models/car/default/chassis.glb');
+useGLTF.preload('/models/car/default/wheel.glb');
+useGLTF.preload('/models/car/alternative/chassis2.glb');
+useGLTF.preload('/models/car/alternative/wheel2.glb');
+useGLTF.preload('/models/car/rolls_royce/chassis.glb');
+useGLTF.preload('/models/car/rolls_royce/wheel.glb');
+useGLTF.preload('/models/car/ship/chassis.glb');
+useGLTF.preload('/models/car/helicopter/chassis.glb');
+useGLTF.preload('/models/car/helicopter/rotor_main.glb');
+useGLTF.preload('/models/car/helicopter/rotor_tail.glb');
+
+// ─── VEHICLE LOAD PROGRESS TRACKER ──────────────────────────────────────────
+// Danh sách file cần tải cho từng loại xe (theo thứ tự ưu tiên, file lớn nhất trước)
+const VEHICLE_FILES = {
+  default:     ['/models/car/default/wheel.glb', '/models/car/default/chassis.glb'],          // 34MB + 1.5MB
+  alternative: ['/models/car/alternative/chassis2.glb', '/models/car/alternative/wheel2.glb'], // 17MB + 1.1MB
+  rolls_royce: ['/models/car/rolls_royce/chassis.glb', '/models/car/rolls_royce/wheel.glb'],   // 25MB + 2MB
+  ship:        ['/models/car/ship/chassis.glb'],                                               // 7MB
+  helicopter:  ['/models/car/helicopter/chassis.glb', '/models/car/helicopter/rotor_main.glb', '/models/car/helicopter/rotor_tail.glb'], // 0.4+0.1+0.4MB
+};
+
+// Hook theo dõi tiến độ tải từng xe
+function useVehicleLoadProgress() {
+  const [progress, setProgress] = React.useState(() => ({
+    default: 0, alternative: 0, rolls_royce: 0, ship: 0, helicopter: 0,
+  }));
+
+  React.useEffect(() => {
+    const checkCacheAndLoad = async (vehicleKey, urls) => {
+      let totalSize = 0;
+      let loadedSize = 0;
+      const responses = [];
+
+      // Fetch tất cả file của xe này song song
+      const fetches = urls.map(url =>
+        fetch(url).then(async (res) => {
+          if (!res.ok) return;
+          const contentLength = Number(res.headers.get('content-length') || 0);
+          totalSize += contentLength || 1_000_000; // fallback 1MB nếu không có header
+          const reader = res.body.getReader();
+          let receivedLength = 0;
+          while (true) {
+            const { done, value } = await reader.read();
+            if (done) break;
+            receivedLength += value.length;
+            loadedSize += value.length;
+            // Cập nhật tiến độ realtime
+            setProgress(prev => ({
+              ...prev,
+              [vehicleKey]: totalSize > 0 ? Math.min(99, Math.round((loadedSize / totalSize) * 100)) : 50,
+            }));
+          }
+        }).catch(() => {})
+      );
+
+      await Promise.all(fetches);
+      // Đánh dấu hoàn tất
+      setProgress(prev => ({ ...prev, [vehicleKey]: 100 }));
+    };
+
+    // Tải song song tất cả xe (default đã load nên sẽ dùng cache)
+    Object.entries(VEHICLE_FILES).forEach(([key, urls]) => {
+      checkCacheAndLoad(key, urls);
+    });
+  }, []);
+
+  return progress;
 }
