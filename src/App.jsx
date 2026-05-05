@@ -1,4 +1,4 @@
-﻿import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
+import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
@@ -449,6 +449,14 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     indexUpAxis: 1,
   }));
 
+  // ─── PHYSICS SETTLING: ẩn xe 600ms sau mount để cannon.js tính xong vị trí bánh xe ───
+  const [settled, setSettled] = useState(false);
+  useEffect(() => {
+    chassisApi.velocity.set(0, 0, 0);
+    chassisApi.angularVelocity.set(0, 0, 0);
+    const t = setTimeout(() => setSettled(true), 600);
+    return () => clearTimeout(t);
+  }, [chassisApi]);
 
   // --- Models ---
   const modelFolder = folder;
@@ -500,6 +508,12 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
 
   // ─── MAIN LOOP ───────────────────────────────────────────────────────────
   useFrame((_, delta) => {
+    // Chưa settle xong → lock xe tại chỗ, không xử lý controls
+    if (!settled) {
+      chassisApi.velocity.set(0, 0, 0);
+      chassisApi.angularVelocity.set(0, 0, 0);
+      return;
+    }
     if (carLightRef.current && weather) {
       // Light logic removed as requested
     }
