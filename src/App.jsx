@@ -18,185 +18,136 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { playSound, playRandomSound, startLoop, stopLoop, fadeVolume, BackgroundMusic, WeatherAudio, MasterMuteButton, setGlobalMuted } from './SoundManager';
 
-// ─── LOADING SCREEN ─────────────────────────────────────────────────────────
+// ─── LOADING SCREEN ──────────────────────────────────────────────────────────
+// Tải trước toàn bộ GLB trong loading → vào game đổi xe tức thì mãi mãi
+const PRELOAD_ASSETS = [
+  { url: '/models/car/default/wheel.glb',           label: 'Banh xe mac dinh',  size: 34000000 },
+  { url: '/models/car/default/chassis.glb',         label: 'Than xe mac dinh',  size:  1600000 },
+  { url: '/models/car/alternative/chassis2.glb',    label: 'Xe Canh Sat',       size: 17700000 },
+  { url: '/models/car/alternative/wheel2.glb',      label: 'Banh xe Canh Sat',  size:  1200000 },
+  { url: '/models/car/rolls_royce/chassis.glb',     label: 'Rolls Royce',       size: 25800000 },
+  { url: '/models/car/rolls_royce/wheel.glb',       label: 'Banh Rolls Royce',  size:  2000000 },
+  { url: '/models/car/ship/chassis.glb',            label: 'Xe Tang',           size:  7000000 },
+  { url: '/models/car/helicopter/chassis.glb',      label: 'Than May Bay',      size:   430000 },
+  { url: '/models/car/helicopter/rotor_main.glb',   label: 'Canh quat chinh',   size:   150000 },
+  { url: '/models/car/helicopter/rotor_tail.glb',   label: 'Canh quat duoi',    size:   420000 },
+];
+const TOTAL_ASSET_SIZE = PRELOAD_ASSETS.reduce((s, a) => s + a.size, 0);
+
 const LoadingScreen = ({ onFinished }) => {
-  const [progress, setProgress] = useState(0);
-  const [tipIndex, setTipIndex] = useState(0);
+  const [totalProgress, setTotalProgress] = useState(0);
+  const [currentFile, setCurrentFile]     = useState('Khoi dong...');
+  const [tipIndex, setTipIndex]           = useState(0);
+  const [done, setDone]                   = useState(false);
 
   const tips = [
-    "Đang làm nóng lốp xe...",
-    "Đồng bộ hóa lưới đèn Neon...",
-    "Tính toán vectơ drift...",
-    "Nạp nhiên liệu Nitrous...",
-    "Kiểm tra hệ thống treo...",
-    "Đang kết nối với vệ tinh đường đua...",
-    "Chuẩn bị hiệu ứng ánh sáng..."
+    'Dang lam nong lop xe...',
+    'Dong bo hoa luoi den Neon...',
+    'Tinh toan vecto drift...',
+    'Nap nhien lieu Nitrous...',
+    'Kiem tra he thong treo...',
+    'Dang ket noi ve tinh duong dua...',
+    'Chuan bi hieu ung anh sang...',
   ];
 
   useEffect(() => {
-    const duration = 15000; // 15 seconds
-    const interval = 100; // Update every 100ms
-    const step = (interval / duration) * 100;
+    const tipTimer = setInterval(() => setTipIndex(p => (p + 1) % tips.length), 2000);
+    return () => clearInterval(tipTimer);
+  }, []);
 
-    const timer = setInterval(() => {
-      setProgress(prev => {
-        if (prev >= 100) {
-          clearInterval(timer);
-          setTimeout(onFinished, 500);
-          return 100;
-        }
-        return prev + step;
+  useEffect(() => {
+    let loadedTotal = 0;
+    let cancelled = false;
+    const downloadAll = async () => {
+      const tasks = PRELOAD_ASSETS.map(async (asset) => {
+        try {
+          setCurrentFile(asset.label);
+          const res = await fetch(asset.url);
+          if (!res.ok || !res.body) { loadedTotal += asset.size; return; }
+          const reader = res.body.getReader();
+          while (true) {
+            const { done: sd, value } = await reader.read();
+            if (sd || cancelled) break;
+            loadedTotal += value.length;
+            setTotalProgress(Math.min(99, Math.round((loadedTotal / TOTAL_ASSET_SIZE) * 100)));
+          }
+        } catch { loadedTotal += asset.size; }
       });
-    }, interval);
-
-    const tipTimer = setInterval(() => {
-      setTipIndex(prev => (prev + 1) % tips.length);
-    }, 2000);
-
-    return () => {
-      clearInterval(timer);
-      clearInterval(tipTimer);
+      await Promise.all(tasks);
+      if (!cancelled) { setTotalProgress(100); setCurrentFile('San sang!'); setDone(true); }
     };
-  }, [onFinished]);
+    downloadAll();
+    return () => { cancelled = true; };
+  }, []);
+
+  useEffect(() => {
+    if (done) { const t = setTimeout(onFinished, 800); return () => clearTimeout(t); }
+  }, [done, onFinished]);
 
   return (
     <div className="loading-screen-wrapper">
       <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&display=swap" rel="stylesheet" />
       <style>{`
         .loading-screen-wrapper {
-          position: fixed;
-          inset: 0;
-          z-index: 9999;
-          background: #050505;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          justify-content: center;
-          color: white;
-          font-family: 'Chakra Petch', sans-serif;
-          overflow: hidden;
+          position: fixed; inset: 0; z-index: 9999; background: #050505;
+          display: flex; flex-direction: column; align-items: center; justify-content: center;
+          color: white; font-family: 'Chakra Petch', sans-serif; overflow: hidden;
         }
-
-        /* Perspective Grid Background */
         .loading-screen-wrapper::before {
-          content: "";
-          position: absolute;
-          width: 200%;
-          height: 200%;
-          bottom: -50%;
-          left: -50%;
-          background-image: 
-            linear-gradient(rgba(112, 0, 255, 0.2) 1px, transparent 1px),
-            linear-gradient(90deg, rgba(112, 0, 255, 0.2) 1px, transparent 1px);
+          content: ""; position: absolute; width: 200%; height: 200%; bottom: -50%; left: -50%;
+          background-image: linear-gradient(rgba(112,0,255,0.2) 1px, transparent 1px),
+            linear-gradient(90deg, rgba(112,0,255,0.2) 1px, transparent 1px);
           background-size: 50px 50px;
           transform: perspective(500px) rotateX(60deg);
-          animation: gridMove 4s linear infinite;
-          z-index: 0;
+          animation: gridMove 4s linear infinite; z-index: 0;
         }
-
         @keyframes gridMove {
-          0% { transform: perspective(500px) rotateX(60deg) translateY(0); }
+          0%   { transform: perspective(500px) rotateX(60deg) translateY(0); }
           100% { transform: perspective(500px) rotateX(60deg) translateY(50px); }
         }
-
-        .main-content {
-          position: relative;
-          z-index: 10;
-          display: flex;
-          flex-direction: column;
-          align-items: center;
-          text-align: center;
-        }
-
-        .neon-title {
-          font-size: 3.5rem;
-          font-weight: 700;
-          text-transform: uppercase;
+        .ls-content { position: relative; z-index: 10; display: flex; flex-direction: column; align-items: center; text-align: center; }
+        .ls-title {
+          font-size: 3.5rem; font-weight: 700; text-transform: uppercase;
           background: linear-gradient(90deg, #00f2ff, #7000ff);
-          -webkit-background-clip: text;
-          -webkit-text-fill-color: transparent;
-          filter: drop-shadow(0 0 15px rgba(0, 242, 255, 0.8)) drop-shadow(0 0 30px rgba(112, 0, 255, 0.6));
-          margin-bottom: 2rem;
-          line-height: 1.2;
-          letter-spacing: 2px;
+          -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+          filter: drop-shadow(0 0 15px rgba(0,242,255,0.8)) drop-shadow(0 0 30px rgba(112,0,255,0.6));
+          margin-bottom: 2rem; line-height: 1.2; letter-spacing: 2px;
         }
-
-        .loading-label {
-          font-size: 2.2rem;
-          font-weight: 700;
-          color: #00f2ff;
-          text-shadow: 0 0 10px #00f2ff;
-          letter-spacing: 4px;
-          margin-bottom: 1.5rem;
+        .ls-label {
+          font-size: 2.2rem; font-weight: 700; color: #00f2ff;
+          text-shadow: 0 0 10px #00f2ff; letter-spacing: 4px; margin-bottom: 1.5rem;
           animation: blink 1.5s infinite;
         }
-
-        @keyframes blink {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.5; }
+        @keyframes blink { 0%,100% { opacity:1; } 50% { opacity:0.5; } }
+        .ls-pct { font-size: 1.8rem; font-weight: 700; color: #00f2ff; margin-bottom: 1rem; }
+        .ls-bar-wrap {
+          width: 500px; max-width: 90vw; height: 6px; background: rgba(255,255,255,0.1);
+          border-radius: 3px; overflow: hidden; margin-bottom: 1.2rem;
         }
-
-        .percentage {
-          font-size: 1.8rem;
-          font-weight: 700;
-          color: #00f2ff;
-          margin-bottom: 1rem;
+        .ls-bar {
+          height: 100%; background: linear-gradient(90deg, #00f2ff, #7000ff);
+          box-shadow: 0 0 10px #00f2ff; transition: width 0.15s linear;
         }
-
-        .loading-container {
-          width: 500px;
-          height: 4px;
-          background: rgba(255, 255, 255, 0.1);
-          border-radius: 2px;
-          position: relative;
-          overflow: hidden;
-          margin-bottom: 2rem;
-        }
-
-        .loading-bar {
-          height: 100%;
-          background: linear-gradient(90deg, #00f2ff, #7000ff);
-          box-shadow: 0 0 10px #00f2ff;
-          transition: width 0.1s linear;
-        }
-
-        .status-text {
-          font-size: 0.8rem;
-          color: rgba(255, 255, 255, 0.7);
-          text-transform: uppercase;
-          letter-spacing: 1px;
-          font-family: Arial, sans-serif;
-          height: 1rem;
-        }
-
-        .bottom-tag {
-          position: absolute;
-          bottom: 30px;
-          font-size: 0.6rem;
-          color: rgba(255, 255, 255, 0.3);
-          letter-spacing: 2px;
-        }
+        .ls-file { font-size: 0.75rem; color: rgba(0,242,255,0.8); letter-spacing: 1px; margin-bottom: 0.5rem; height: 1rem; }
+        .ls-tip  { font-size: 0.8rem; color: rgba(255,255,255,0.5); text-transform: uppercase; letter-spacing: 1px; height: 1rem; }
+        .ls-note { margin-top: 1.5rem; font-size: 0.6rem; color: rgba(255,255,255,0.25); letter-spacing: 1px; max-width: 420px; line-height: 1.6; }
+        .ls-bottom { position: absolute; bottom: 30px; font-size: 0.6rem; color: rgba(255,255,255,0.3); letter-spacing: 2px; }
       `}</style>
-
-      <div className="main-content">
-        <h1 className="neon-title">GIẢNG ĐƯỜNG<br />TRONG MƠ</h1>
-
-        <div className="loading-label">LOADING...</div>
-
-        <div className="percentage">{Math.round(progress)}%</div>
-
-        <div className="loading-container">
-          <div className="loading-bar" style={{ width: `${progress}%` }} />
+      <div className="ls-content">
+        <h1 className="ls-title">GIẢNG ĐƯỜNG<br />TRONG MƠ</h1>
+        <div className="ls-label">{done ? 'SẴN SÀNG!' : 'LOADING...'}</div>
+        <div className="ls-pct">{totalProgress}%</div>
+        <div className="ls-bar-wrap">
+          <div className="ls-bar" style={{ width: `${totalProgress}%` }} />
         </div>
-
-        <div className="status-text">
-          {tips[tipIndex]}
+        <div className="ls-file">{done ? '✅ Tất cả tài nguyên đã tải xong' : `⬇ ${currentFile}`}</div>
+        <div className="ls-tip">{tips[tipIndex]}</div>
+        <div className="ls-note">
+          Đang tải trước mô hình xe để bạn đổi xe tức thì trong game.<br />
+          Chỉ cần đợi lần đầu — lần sau vào ngay lập tức nhờ cache!
         </div>
       </div>
-
-      <div className="bottom-tag">
-        GAME ENGINE INITIALIZING...
-      </div>
+      <div className="ls-bottom">GAME ENGINE INITIALIZING...</div>
     </div>
   );
 };
