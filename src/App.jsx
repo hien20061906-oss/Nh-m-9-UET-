@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
+﻿import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
 
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
@@ -1110,22 +1110,24 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     }));
   };
 
-  // ─── Ép tọa độ an toàn mỗi khi đổi xe (chạy trước khi xe mới mount) ───
-  // isSwitching: render null trong 350ms để Cannon.js dọn sạch body cũ
+  // ─── Switch xe an toàn: render null giữa 2 xe để Cannon.js dọn body cũ ───
   const [isSwitching, setIsSwitching] = useState(false);
+  const isFirstVehicleMount = useRef(true); // skip lần đầu vào game
 
   useEffect(() => {
-    // Bắt đầu switching: unmount xe cũ ngay
+    if (isFirstVehicleMount.current) {
+      isFirstVehicleMount.current = false;
+      return; // Lần đầu mount: không cần cleanup, xuất hiện ngay
+    }
+    // Switch thật: unmount xe cũ → chờ Cannon xóa body → mount xe mới
     setIsSwitching(true);
-    // Clamp tọa độ an toàn
     if (lastPos.current) {
       lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
     }
     if (lastRot.current) {
       lastRot.current = [0, lastRot.current[1], 0];
     }
-    // Sau 350ms mới mount xe mới (Cannon.js đã dọn xong)
-    const t = setTimeout(() => setIsSwitching(false), 350);
+    const t = setTimeout(() => setIsSwitching(false), 500);
     return () => clearTimeout(t);
   }, [vehicleFolder]);
 
