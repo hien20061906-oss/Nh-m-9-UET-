@@ -1111,19 +1111,31 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
   };
 
   // ─── Ép tọa độ an toàn mỗi khi đổi xe (chạy trước khi xe mới mount) ───
+  // isSwitching: render null trong 350ms để Cannon.js dọn sạch body cũ
+  const [isSwitching, setIsSwitching] = useState(false);
+
   useEffect(() => {
+    // Bắt đầu switching: unmount xe cũ ngay
+    setIsSwitching(true);
+    // Clamp tọa độ an toàn
     if (lastPos.current) {
       lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
     }
     if (lastRot.current) {
       lastRot.current = [0, lastRot.current[1], 0];
     }
+    // Sau 350ms mới mount xe mới (Cannon.js đã dọn xong)
+    const t = setTimeout(() => setIsSwitching(false), 350);
+    return () => clearTimeout(t);
   }, [vehicleFolder]);
 
   const countdownControls = { forward: false, backward: false, left: false, right: false, brake: true, reset: false, shift: false, horn: false };
 
   let VehicleContainer;
-  if (vehicleFolder === 'helicopter') {
+  // Nếu đang trong thời gian switching → render null (xoá body cũ khỏi Cannon)
+  if (isSwitching) {
+    VehicleContainer = null;
+  } else if (vehicleFolder === 'helicopter') {
     VehicleContainer = <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
   } else {
     VehicleContainer = (
