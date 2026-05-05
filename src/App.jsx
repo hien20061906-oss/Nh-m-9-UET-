@@ -707,7 +707,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
   });
 
   return (
-    <group ref={vehicle}>
+    <group ref={vehicle} visible={settled}>
       <group ref={chassisRef} name="chassis-body-visual">
         <mesh castShadow>
           <meshStandardMaterial visible={false} />
