@@ -1124,40 +1124,49 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     }));
   };
 
-  // ─── Switch xe an toàn: render null giữa 2 xe để Cannon.js dọn body cũ ───
+  // ─── SWITCH XE AN TOÀN: dùng activeVehicle state riêng, KHÔNG dùng prop trực tiếp ───
+  // vehicleFolder (prop) = xe muốn chuyển sang
+  // activeVehicle (state) = xe đang thực sự render
+  // isSwitching = true khi đang trong giai đoạn cleanup (render null)
+  const [activeVehicle, setActiveVehicle] = useState(vehicleFolder);
   const [isSwitching, setIsSwitching] = useState(false);
-  const isFirstVehicleMount = useRef(true); // skip lần đầu vào game
 
   useEffect(() => {
-    if (isFirstVehicleMount.current) {
-      isFirstVehicleMount.current = false;
-      return; // Lần đầu mount: không cần cleanup, xuất hiện ngay
-    }
-    // Switch thật: unmount xe cũ → chờ Cannon xóa body → mount xe mới
+    // Nếu prop giống state → không cần làm gì
+    if (vehicleFolder === activeVehicle) return;
+
+    // Phase 1: XÓA xe cũ ngay lập tức (render null)
     setIsSwitching(true);
+
+    // Clamp tọa độ an toàn
     if (lastPos.current) {
       lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
     }
     if (lastRot.current) {
       lastRot.current = [0, lastRot.current[1], 0];
     }
-    const t = setTimeout(() => setIsSwitching(false), 500);
+
+    // Phase 2: Sau 500ms (Cannon.js đã dọn sạch body cũ) → mount xe mới
+    const t = setTimeout(() => {
+      setActiveVehicle(vehicleFolder);  // cập nhật xe thực tế
+      setIsSwitching(false);            // cho phép render
+    }, 500);
     return () => clearTimeout(t);
-  }, [vehicleFolder]);
+  }, [vehicleFolder, activeVehicle]);
 
   const countdownControls = { forward: false, backward: false, left: false, right: false, brake: true, reset: false, shift: false, horn: false };
 
   let VehicleContainer;
-  // Nếu đang trong thời gian switching → render null (xoá body cũ khỏi Cannon)
+  // isSwitching → render null (xóa toàn bộ physics body)
   if (isSwitching) {
     VehicleContainer = null;
-  } else if (vehicleFolder === 'helicopter') {
+  } else if (activeVehicle === 'helicopter') {
     VehicleContainer = <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
   } else {
     VehicleContainer = (
       <Car
-        key={vehicleFolder}
-        folder={vehicleFolder}
+        key={activeVehicle}
+        folder={activeVehicle}
         lastPos={lastPos}
         lastRot={lastRot}
         controls={raceState === 'COUNTDOWN' ? countdownControls : controls}
