@@ -17,7 +17,6 @@ import { MapCoins, CoinParticles3D, CoinCollectUI } from './CoinSystem';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import { playSound, playRandomSound, startLoop, stopLoop, fadeVolume, BackgroundMusic, WeatherAudio, MasterMuteButton, setGlobalMuted } from './SoundManager';
-
 // ─── LOADING SCREEN ──────────────────────────────────────────────────────────
 // Tải trước toàn bộ GLB trong loading → vào game đổi xe tức thì mãi mãi
 const PRELOAD_ASSETS = [
@@ -39,6 +38,8 @@ const LoadingScreen = ({ onFinished }) => {
   const [currentFile, setCurrentFile]     = useState('Khoi dong...');
   const [tipIndex, setTipIndex]           = useState(0);
   const [done, setDone]                   = useState(false);
+  const [modelsReady, setModelsReady]     = useState(false);
+  const startTime = useRef(Date.now());
 
   const tips = [
     'Dang lam nong lop xe...',
@@ -69,24 +70,44 @@ const LoadingScreen = ({ onFinished }) => {
             const { done: sd, value } = await reader.read();
             if (sd || cancelled) break;
             loadedTotal += value.length;
-            setTotalProgress(Math.min(99, Math.round((loadedTotal / TOTAL_ASSET_SIZE) * 100)));
           }
         } catch { loadedTotal += asset.size; }
       });
       await Promise.all(tasks);
-      if (!cancelled) { setTotalProgress(100); setCurrentFile('San sang!'); setDone(true); }
+      if (!cancelled) { setCurrentFile('San sang!'); setDone(true); }
     };
     downloadAll();
     return () => { cancelled = true; };
   }, []);
 
   useEffect(() => {
-    if (done) { const t = setTimeout(onFinished, 800); return () => clearTimeout(t); }
-  }, [done, onFinished]);
+    const minLoadTime = 15000;
+    const interval = setInterval(() => {
+      const elapsed = Date.now() - startTime.current;
+      const timeProgress = Math.min(100, Math.round((elapsed / minLoadTime) * 100));
+      if (!done || !modelsReady) {
+        setTotalProgress(Math.min(99, timeProgress));
+      } else {
+        setTotalProgress(timeProgress);
+        if (elapsed >= minLoadTime) {
+          clearInterval(interval);
+          onFinished();
+        }
+      }
+    }, 50);
+    return () => clearInterval(interval);
+  }, [done, modelsReady, onFinished]);
+
 
   return (
     <div className="loading-screen-wrapper">
       <link href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@400;700&display=swap" rel="stylesheet" />
+      {/* Canvas ẩn → buộc Three.js parse và cache toàn bộ GLB trước khi vào game */}
+      <Canvas style={{ position: 'absolute', width: 1, height: 1, opacity: 0, pointerEvents: 'none' }}>
+        <Suspense fallback={null}>
+          <VehiclePreloader onDone={() => setModelsReady(true)} />
+        </Suspense>
+      </Canvas>
       <style>{`
         .loading-screen-wrapper {
           position: fixed; inset: 0; z-index: 9999; background: #050505;
@@ -152,6 +173,21 @@ const LoadingScreen = ({ onFinished }) => {
   );
 };
 
+// Component nằm TRONG Canvas context → gọi useGLTF thật sự parse và cache
+const VehiclePreloader = ({ onDone }) => {
+  useGLTF('/models/car/default/wheel.glb');
+  useGLTF('/models/car/default/chassis.glb');
+  useGLTF('/models/car/alternative/chassis2.glb');
+  useGLTF('/models/car/alternative/wheel2.glb');
+  useGLTF('/models/car/rolls_royce/chassis.glb');
+  useGLTF('/models/car/rolls_royce/wheel.glb');
+  useGLTF('/models/car/ship/chassis.glb');
+  useGLTF('/models/car/helicopter/chassis.glb');
+  useGLTF('/models/car/helicopter/rotor_main.glb');
+  useGLTF('/models/car/helicopter/rotor_tail.glb');
+  useEffect(() => { onDone(); }, [onDone]);
+  return null;
+};
 
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
 function usePlayerControls() {
@@ -195,6 +231,7 @@ function usePlayerControls() {
 }
 
 const WheelModel = ({ leftSide, folder = 'default', visible = true }) => {
+  if (folder === 'ship') return null; // Xe tăng không dùng mô hình bánh xe riêng
   const wheelFile = folder === 'alternative' ? 'wheel2.glb' : 'wheel.glb';
   const { scene } = useGLTF(`/models/car/${folder}/${wheelFile}`);
   const copiedScene = React.useMemo(() => {
@@ -718,6 +755,15 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     // Lưu vị trí và góc xoay cuối cho Minimap, Achievement và chuyển đổi xe
     lastPos.current = [currentPosition.x, currentPosition.y, currentPosition.z];
     lastRot.current = [0, smoothRot.current, 0];
+
+    // Phát event để App lưu vị trí trước khi đổi xe (throttle 500ms)
+    const now = Date.now();
+    if (!Car._lastPosEvent || now - Car._lastPosEvent > 500) {
+      Car._lastPosEvent = now;
+      window.dispatchEvent(new CustomEvent('vehicle-pos-update', {
+        detail: { pos: [...lastPos.current], rot: [...lastRot.current] }
+      }));
+    }
   });
 
   return (
@@ -1102,7 +1148,7 @@ useGLTF.preload('/models/car/rolls_royce/wheel.glb');
 useGLTF.preload('/models/car/ship/chassis.glb');
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
-function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userAvatar, gold, setGold, unlockedAchievements, setUnlockedAchievements }) {
+function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userAvatar, gold, setGold, unlockedAchievements, setUnlockedAchievements, savedPos, savedRot }) {
   const { raceState, resetRace, endRace, setPlayerName, setPlayerAvatar } = useContext(RaceContext);
   const controls = usePlayerControls();
 
@@ -1110,9 +1156,19 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     window.dispatchEvent(new CustomEvent('racestate-change', { detail: raceState }));
   }, [raceState]);
 
-  // Tọa độ an toàn toàn cục (Hạ thấp xuống 0.5m để vào game là chạy được ngay)
-  const lastPos = useRef([0, 0.5, 0]);
-  const lastRot = useRef([0, 0, 0]);
+  // Khởi tạo từ savedPos (vị trí xe trước khi đổi) → xe mới spawn đúng chỗ
+  const lastPos = useRef(savedPos?.current ? [...savedPos.current] : [0, 0.5, 0]);
+  const lastRot = useRef(savedRot?.current ? [...savedRot.current] : [0, 0, 0]);
+
+  // Liên tục cập nhật savedPos/savedRot để App lưu lại trước khi unmount
+  useEffect(() => {
+    const handler = (e) => {
+      if (savedPos) savedPos.current = e.detail.pos;
+      if (savedRot) savedRot.current = e.detail.rot;
+    };
+    window.addEventListener('vehicle-pos-update', handler);
+    return () => window.removeEventListener('vehicle-pos-update', handler);
+  }, [savedPos, savedRot]);
 
   // Tọa độ dịch chuyển xe VÀO ĐƯỜNG ĐUA (khi nhấn E / click bảng)
   // Đây là vạch xuất phát thực tế trên đường đua
@@ -1146,11 +1202,12 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
       lastRot.current = [0, lastRot.current[1], 0];
     }
 
-    // Phase 2: Sau 500ms (Cannon.js đã dọn sạch body cũ) → mount xe mới
+    // Phase 2: Sau 1500ms (Cannon.js đã dọn sạch body cũ hoàn toàn) → mount xe mới
+    // Tăng từ 800ms → 1500ms để đảm bảo physics world sạch hoàn toàn kể cả trên máy chậm
     const t = setTimeout(() => {
       setActiveVehicle(vehicleFolder);  // cập nhật xe thực tế
       setIsSwitching(false);            // cho phép render
-    }, 500);
+    }, 1500);
     return () => clearTimeout(t);
   }, [vehicleFolder, activeVehicle]);
 
@@ -1175,50 +1232,7 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     );
   }
 
-  const contents = (
-    <>
-      <Suspense fallback={null}>
-        {VehicleContainer}
-      </Suspense>
-      <RaceTrack
-        position={[180, 0, -300]}
-        scale={0.7}
-        onEnterTrack={teleportToTrack}
-        sensorOffset={[-100, 0, 50]}
-        sensorRadius={30}
-        uiScale={1.2}
-        sensorRotation={-90}
-        finishOffset={[-8, 1, 5]}
-        startLinePos={teleportPos}
-      />
-      <Ground />
-      <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
 
-      {/* Hệ thống coin */}
-      {raceState === 'IDLE' && (
-        <MapCoins numCoins={15} onCollect={(value) => {
-          setGold(prev => {
-            const newGold = prev + value;
-            const accountsStr = localStorage.getItem('game_accounts');
-            if (accountsStr && !userName.startsWith('Khách_')) {
-              const accounts = JSON.parse(accountsStr);
-              if (accounts[userName]) {
-                accounts[userName].gold = newGold;
-                localStorage.setItem('game_accounts', JSON.stringify(accounts));
-              }
-            }
-            window.dispatchEvent(new CustomEvent('coin-collected', { detail: { value } }));
-            return newGold;
-          });
-        }} />
-      )}
-      <AchievementSystem
-        lastPos={lastPos}
-        unlocked={unlockedAchievements}
-        onUnlock={(key) => setUnlockedAchievements(prev => [...new Set([...prev, key])])}
-      />
-    </>
-  );
 
   // Tự động đưa xe về Billboard sau khi đua xong
   useEffect(() => {
@@ -1255,21 +1269,33 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
   }, [userName, userAvatar, setPlayerName, setPlayerAvatar]);
 
   return (
-    <Physics
-      gravity={[0, -9.81, 0]}
-      allowSleep={true}
-      iterations={12}
-      tolerance={0.002}
-      broadphase="SAP"
-      defaultContactMaterial={{
-        friction: 0.3,
-        restitution: 0.1,
-        contactEquationStiffness: 1e7,
-        contactEquationRelaxation: 4
-      }}
-    >
-      {debug ? <Debug color="white" scale={1.02}>{contents}</Debug> : contents}
-    </Physics>
+    <>
+      <Suspense fallback={null}>
+        {VehicleContainer}
+      </Suspense>
+      {raceState === 'IDLE' && (
+        <MapCoins numCoins={15} onCollect={(value) => {
+          setGold(prev => {
+            const newGold = prev + value;
+            const accountsStr = localStorage.getItem('game_accounts');
+            if (accountsStr && !userName.startsWith('Khách_')) {
+              const accounts = JSON.parse(accountsStr);
+              if (accounts[userName]) {
+                accounts[userName].gold = newGold;
+                localStorage.setItem('game_accounts', JSON.stringify(accounts));
+              }
+            }
+            window.dispatchEvent(new CustomEvent('coin-collected', { detail: { value } }));
+            return newGold;
+          });
+        }} />
+      )}
+      <AchievementSystem
+        lastPos={lastPos}
+        unlocked={unlockedAchievements}
+        onUnlock={(key) => setUnlockedAchievements(prev => [...new Set([...prev, key])])}
+      />
+    </>
   );
 }
 
@@ -1322,17 +1348,20 @@ export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
   const [isPending, startTransition] = useTransition();
   const vehicleLoadProgress = useVehicleLoadProgress();
-  // Cooldown 4 giây sau khi đổi xe — tránh switch quá nhanh gây lỗi physics
+  // Cooldown 6 giây sau khi đổi xe — tránh switch quá nhanh gây lỗi physics
   const [vehicleCooldown, setVehicleCooldown] = useState(0); // giây còn lại
   const cooldownTimer = useRef(null);
+  // Lưu vị trí xe trước khi đổi → Game mới spawn đúng chỗ
+  const savedPos = useRef([0, 0.5, 0]);
+  const savedRot = useRef([0, 0, 0]);
 
   const handleSelectVehicle = useCallback((folder) => {
     if (vehicleCooldown > 0) return; // Đang trong cooldown, bỏ qua
     playSound('click', 0.3);
     startTransition(() => setVehicleFolder(folder));
     setShowMenu(false);
-    // Bắt đầu đếm ngược 4 giây
-    setVehicleCooldown(4);
+    // Bắt đầu đếm ngược 6 giây (>= thời gian cleanup physics 1.5s để an toàn)
+    setVehicleCooldown(6);
     if (cooldownTimer.current) clearInterval(cooldownTimer.current);
     cooldownTimer.current = setInterval(() => {
       setVehicleCooldown(prev => {
@@ -1363,7 +1392,7 @@ export default function App() {
   const activeWeather = isRacing ? WEATHER_PRESETS.sunny : weather;
 
   // Hệ thống vàng và xe đã mở khóa
-  const [gold, setGold] = useState(10000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
+  const [gold, setGold] = useState(100000); // Tặng 10,000 vàng khởi đầu để người chơi thoải mái mua sắm
   const [unlockedVehicles, setUnlockedVehicles] = useState(['default']);
 
   // Hệ thống hồ sơ người chơi
@@ -1372,6 +1401,7 @@ export default function App() {
   const [showProfile, setShowProfile] = useState(false); // Không hiện profile lúc đầu nữa vì đã có màn hình login
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isGameLoading, setIsGameLoading] = useState(true);
+
   const [unlockedAchievements, setUnlockedAchievements] = useState([]);
   const [showAchievements, setShowAchievements] = useState(false);
 
@@ -1405,10 +1435,10 @@ export default function App() {
   const avatars = ['👤', '🏎️', '🚓', '🚁', '🚜', '🚢', '🚀', '🐱', '🐶', '🔥', '⚡'];
 
   const vehiclePrices = {
-    alternative: 500,
-    helicopter: 1500,
-    ship: 1000,
-    rolls_royce: 2500
+    alternative: 2000,
+    helicopter: 2000,
+    ship: 2000,
+    rolls_royce: 2000
   };
 
   const buyVehicle = (type) => {
@@ -2061,7 +2091,7 @@ export default function App() {
               <div className="vehicle-option">
                 <span className="vehicle-icon">🚓</span>
                 <h3>Xe Cảnh Sát</h3>
-                <span className="price-tag">💰 500</span>
+                <span className="price-tag">💰 2,000</span>
                 {!unlockedVehicles.includes('alternative') ? (
                   <button className="buy-btn" onClick={() => buyVehicle('alternative')}>MUA</button>
                 ) : (
@@ -2072,7 +2102,7 @@ export default function App() {
               <div className="vehicle-option">
                 <span className="vehicle-icon">🚁</span>
                 <h3>Máy Bay</h3>
-                <span className="price-tag">💰 1500</span>
+                <span className="price-tag">💰 2,000</span>
                 {!unlockedVehicles.includes('helicopter') ? (
                   <button className="buy-btn" onClick={() => buyVehicle('helicopter')}>MUA</button>
                 ) : (
@@ -2085,7 +2115,7 @@ export default function App() {
               <div className="vehicle-option">
                 <span className="vehicle-icon">🚜</span>
                 <h3>Xe Tăng</h3>
-                <span className="price-tag">💰 1000</span>
+                <span className="price-tag">💰 2,000</span>
                 {!unlockedVehicles.includes('ship') ? (
                   <button className="buy-btn" onClick={() => buyVehicle('ship')}>MUA</button>
                 ) : (
@@ -2096,7 +2126,7 @@ export default function App() {
               <div className="vehicle-option">
                 <span className="vehicle-icon">💎</span>
                 <h3>Rolls Royce</h3>
-                <span className="price-tag">💰 2500</span>
+                <span className="price-tag">💰 2,000</span>
                 {!unlockedVehicles.includes('rolls_royce') ? (
                   <button className="buy-btn" onClick={() => buyVehicle('rolls_royce')}>MUA</button>
                 ) : (
@@ -2113,21 +2143,55 @@ export default function App() {
           <MinimapPlayerTracker />
           <CoinParticles3D />
           <Environment weather={activeWeather} />
-          <Suspense fallback={null}>
-            <Game
-              weather={activeWeather}
-              vehicleFolder={vehicleFolder}
-              setVehicleFolder={setVehicleFolder}
-              debug={debug}
-              userName={userName}
-              userAvatar={userAvatar}
-              gold={gold}
-              setGold={setGold}
-              unlockedAchievements={unlockedAchievements}
-              setUnlockedAchievements={setUnlockedAchievements}
-            />
+          <Physics
+            gravity={[0, -9.81, 0]}
+            allowSleep={true}
+            iterations={12}
+            tolerance={0.002}
+            broadphase="SAP"
+            defaultContactMaterial={{
+              friction: 0.3,
+              restitution: 0.1,
+              contactEquationStiffness: 1e7,
+              contactEquationRelaxation: 4
+            }}
+          >
+            {/* Bản đồ và ground - không bao giờ remount */}
+            <Suspense fallback={null}>
+              <Ground />
+              <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
+              <RaceTrack
+                position={[180, 0, -300]}
+                scale={0.7}
+                onEnterTrack={() => window.dispatchEvent(new CustomEvent('teleport-start', { detail: { name: 'Vạch Xuất Phát', position: [172, 1, -303], rotation: 0 } }))}
+                sensorOffset={[-100, 0, 50]}
+                sensorRadius={30}
+                uiScale={1.2}
+                sensorRotation={-90}
+                finishOffset={[-8, 1, 5]}
+                startLinePos={[172, 1, -303]}
+              />
+            </Suspense>
+            {/* Game chỉ chứa vehicle - remount khi đổi xe → reset sạch physics xe */}
+            <Suspense fallback={null}>
+              <Game
+                key={vehicleFolder}
+                weather={activeWeather}
+                vehicleFolder={vehicleFolder}
+                setVehicleFolder={setVehicleFolder}
+                debug={debug}
+                userName={userName}
+                userAvatar={userAvatar}
+                gold={gold}
+                setGold={setGold}
+                unlockedAchievements={unlockedAchievements}
+                setUnlockedAchievements={setUnlockedAchievements}
+                savedPos={savedPos}
+                savedRot={savedRot}
+              />
+            </Suspense>
             <Preload all />
-          </Suspense>
+          </Physics>
         </Canvas>
         {!isRacing && <WeatherPanel weather={weather} setWeather={setWeather} />}
         <MobileControls vehicleFolder={vehicleFolder} />
