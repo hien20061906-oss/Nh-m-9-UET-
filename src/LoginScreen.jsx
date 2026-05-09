@@ -135,7 +135,7 @@ export default function LoginScreen({ onLoginSuccess }) {
           justify-content: center;
           background: #050505;
           font-family: 'Chakra Petch', sans-serif;
-          z-index: 9999;
+          z-index: 999999;
           overflow: hidden;
         }
 

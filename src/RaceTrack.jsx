@@ -5,25 +5,32 @@ import { useTrimesh, useBox } from '@react-three/cannon';
 import * as THREE from 'three';
 import { RaceContext } from './RaceManager';
 
-const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2] }) => {
+const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2], debug }) => {
   const { onCheckpointReached, currentCheckpoint } = useContext(RaceContext);
   const isTarget = currentCheckpoint === index - 1;
   const isReached = currentCheckpoint >= index;
   
-  // Dùng biến tĩnh để tránh tạo object mới mỗi frame (tránh lag/GC)
   const carPos = useMemo(() => new THREE.Vector3(), []);
-  const cpPos = useMemo(() => new THREE.Vector3(position[0], position[1], position[2]), [position]);
+  const cpWorldPos = useMemo(() => new THREE.Vector3(), []);
+  const groupRef = useRef(null);
+  const carCache = useRef(null);
 
   useFrame((state) => {
     if (isReached) return;
 
-    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!carCache.current || !carCache.current.parent) {
+      carCache.current = state.scene.getObjectByName('chassis-body-visual');
+    }
+    const car = carCache.current;
     if (!car) return;
 
-    car.updateWorldMatrix(true, false);
-    car.getWorldPosition(carPos);
-
-    const dist = carPos.distanceTo(cpPos);
+    carPos.setFromMatrixPosition(car.matrixWorld);
+    
+    if (groupRef.current) {
+      cpWorldPos.setFromMatrixPosition(groupRef.current.matrixWorld);
+    }
+    
+    const dist = carPos.distanceTo(cpWorldPos);
 
     // Bán kính nhận diện Checkpoint lớn (40m) để đảm bảo không bị trượt
     if (dist < 40 && isTarget) {
@@ -33,9 +40,17 @@ const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2] }) => {
   });
 
   return (
-    <group position={[position[0], 0.01, position[2]]} rotation={rotation} visible={true}>
+    <group ref={groupRef} position={[position[0], 0.01, position[2]]} rotation={rotation} visible={true}>
       {/* Vạch kẻ caro dưới đất cho checkpoint */}
       <CheckerboardPattern width={scale[0]} depth={scale[2]} repeatX={6} repeatY={1} />
+
+      {/* Hitbox Debug */}
+      {debug && (
+        <mesh position={[0, 0, 0]}>
+          <sphereGeometry args={[40, 16, 16]} />
+          <meshBasicMaterial color="#ff0000" wireframe depthTest={false} />
+        </mesh>
+      )}
 
       {/* Visual gate */}
       <mesh scale={[scale[0], scale[1], 0.1]}>
@@ -109,12 +124,12 @@ const CheckerboardPattern = ({ width = 10, depth = 2, repeatX = 8, repeatY = 2 }
   );
 };
 
-const FinishSensor = ({ position, offset, radius = 6, startLinePos }) => {
+const FinishSensor = ({ position, offset, radius = 6, startLinePos, debug }) => {
   const { raceState, finishRace, currentCheckpoint, totalCheckpoints } = useContext(RaceContext);
   const hasLeftStart = useRef(false);
 
-  // Dùng biến tĩnh để tránh tạo object mỗi frame
   const carPos = useMemo(() => new THREE.Vector3(), []);
+  const carCache = useRef(null);
   const finishPos = useMemo(() => {
     return startLinePos
       ? new THREE.Vector3(startLinePos[0], startLinePos[1], startLinePos[2])
@@ -140,12 +155,13 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos }) => {
   useFrame((state) => {
     if (raceState !== 'RUNNING') return;
 
-    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!carCache.current || !carCache.current.parent) {
+      carCache.current = state.scene.getObjectByName('chassis-body-visual');
+    }
+    const car = carCache.current;
     if (!car) return;
 
-    car.updateWorldMatrix(true, false);
-    car.getWorldPosition(carPos);
-
+    carPos.setFromMatrixPosition(car.matrixWorld);
     const dist = carPos.distanceTo(finishPos);
 
     // 1. Logic "Rời khỏi vạch": Phải đi xa vạch ít nhất 20m mới được tính là đang chạy vòng đua
@@ -171,6 +187,14 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos }) => {
 
   return (
     <group position={visualPos}>
+      {/* Hitbox Debug */}
+      {debug && (
+        <mesh position={[0, 0, 0]}>
+          <sphereGeometry args={[radius, 16, 16]} />
+          <meshBasicMaterial color="#ff0000" wireframe depthTest={false} />
+        </mesh>
+      )}
+
       {/* Vạch kẻ caro dưới đất nhỏ gọn và thanh mảnh hơn */}
       <CheckerboardPattern width={radius * 1.8} depth={1.5} repeatX={6} repeatY={1} />
 
@@ -216,13 +240,13 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos }) => {
   );
 };
 
-const StartSensor = ({ position, onEnterTrack, radius = 5, offset = [0, 0, 0], uiScale = 1.0, rotation = 0 }) => {
+const StartSensor = ({ position, onEnterTrack, radius = 5, offset = [0, 0, 0], uiScale = 1.0, rotation = 0, debug }) => {
   const { startRace, raceState } = useContext(RaceContext);
   const { setTotalCheckpoints } = useContext(RaceContext);
   const [isNear, setIsNear] = useState(false);
   const [showConfirm, setShowConfirm] = useState(false);
-  const [carRef, setCarRef] = useState(null);
   const sensorRef = useRef();
+  const carCache = useRef(null);
 
   // Biến tĩnh tránh lag
   const carPos = useMemo(() => new THREE.Vector3(), []);
@@ -234,16 +258,17 @@ const StartSensor = ({ position, onEnterTrack, radius = 5, offset = [0, 0, 0], u
       return;
     }
 
-    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!carCache.current || !carCache.current.parent) {
+      carCache.current = state.scene.getObjectByName('chassis-body-visual');
+    }
+    const car = carCache.current;
     if (!car) return;
-    if (!carRef) setCarRef(car);
 
-    car.updateWorldMatrix(true, false);
-    car.getWorldPosition(carPos);
+    carPos.setFromMatrixPosition(car.matrixWorld);
 
     // Lấy vị trí thế giới thực của sensor để so sánh khoảng cách
     if (sensorRef.current) {
-      sensorRef.current.getWorldPosition(sensorWorldPos);
+      sensorWorldPos.setFromMatrixPosition(sensorRef.current.matrixWorld);
     }
 
     const dist = carPos.distanceTo(sensorWorldPos);
@@ -303,6 +328,14 @@ const StartSensor = ({ position, onEnterTrack, radius = 5, offset = [0, 0, 0], u
         position={[offset[0], offset[1], offset[2]]}
         rotation={[0, rotation * (Math.PI / 180), 0]}
       >
+        {/* Hitbox Debug */}
+        {debug && (
+          <mesh position={[0, 0, 0]}>
+            <sphereGeometry args={[radius, 16, 16]} />
+            <meshBasicMaterial color="#ff0000" wireframe depthTest={false} />
+          </mesh>
+        )}
+
         {/* Hai cột trụ 2 bên */}
         <mesh position={[-2, 1.5, 0]}>
           <cylinderGeometry args={[0.15, 0.15, 4, 16]} />
@@ -629,7 +662,8 @@ const RaceTrack = ({
   uiScale = 1.0,
   sensorRotation = 0,
   finishOffset = null,
-  startLinePos = null
+  startLinePos = null,
+  debug = false
 }) => {
   const { scene } = useGLTF('/models/map/race_track.glb');
   const { raceState, setTotalCheckpoints } = useContext(RaceContext);
@@ -744,6 +778,7 @@ const RaceTrack = ({
           radius={sensorRadius} 
           uiScale={uiScale} 
           rotation={sensorRotation} 
+          debug={debug}
         />
 
         {/* Bảng thành tích */}
@@ -761,6 +796,7 @@ const RaceTrack = ({
             rotation={cp.rotation}
             scale={cp.scale}
             trackScale={1.0}
+            debug={debug}
           />
         ))}
       </group>
@@ -771,6 +807,7 @@ const RaceTrack = ({
           position={[0, 0, 0]}
           offset={finishOffset}
           startLinePos={startLinePos}
+          debug={debug}
         />
       )}
     </>

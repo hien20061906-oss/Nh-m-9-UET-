@@ -58,8 +58,9 @@ function emitAchievement(achievementKey) {
 }
 
 // ─── ACHIEVEMENT SYSTEM (chạy bên trong Canvas) ─────────────────────────────
-export function AchievementSystem({ lastPos, unlocked = [], onUnlock }) {
+export function AchievementSystem({ lastPos, unlocked = [], onUnlock, debug }) {
   const triggersRef = useRef([]); // [{ key, box3 }]
+  const [triggerMeshes, setTriggerMeshes] = useState([]);
   const loadedRef = useRef(false);
   // Bộ nhớ tạm để chặn lặp lại ngay lập tức
   const sessionUnlocked = useRef(new Set(unlocked));
@@ -80,11 +81,18 @@ export function AchievementSystem({ lastPos, unlocked = [], onUnlock }) {
           child.updateWorldMatrix(true, true);
           const box = new THREE.Box3().setFromObject(child);
           if (!box.isEmpty()) {
-            triggers.push({ key, box });
+            // Expand the box vertically to ensure it catches the car's chassis point
+            box.min.y -= 10;
+            box.max.y += 10;
+            
+            // Generate wireframe for debug mode
+            const helper = new THREE.Box3Helper(box, 0xff0000);
+            triggers.push({ key, box, helper });
           }
         }
       });
       triggersRef.current = triggers;
+      setTriggerMeshes(triggers.map(t => t.helper));
       loadedRef.current = true;
     }, undefined, (err) => {
       console.error('[Achievement] Failed to load trigger.glb:', err);
@@ -117,7 +125,13 @@ export function AchievementSystem({ lastPos, unlocked = [], onUnlock }) {
     }
   });
 
-  return null;
+  return (
+    <>
+      {debug && triggerMeshes.map((helper, i) => (
+        <primitive key={i} object={helper} />
+      ))}
+    </>
+  );
 }
 
 // ─── ACHIEVEMENT TOAST UI (Thông báo góc màn hình) ──────────────────────────

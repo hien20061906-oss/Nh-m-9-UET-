@@ -26,18 +26,21 @@ export const TELEPORT_LOCATIONS = [
 export const MinimapPlayerTracker = () => {
   const lastUpdate = useRef(0);
 
+  const carCache = useRef(null);
+
   useFrame((state) => {
     const now = performance.now();
     // Chỉ cập nhật mỗi 100ms để không tốn hiệu năng
     if (now - lastUpdate.current < 100) return;
     lastUpdate.current = now;
 
-    const car = state.scene.getObjectByName('chassis-body-visual');
+    if (!carCache.current || !carCache.current.parent) {
+      carCache.current = state.scene.getObjectByName('chassis-body-visual');
+    }
+    const car = carCache.current;
     if (!car) return;
 
-    car.updateWorldMatrix(true, false);
-    const pos = new THREE.Vector3();
-    car.getWorldPosition(pos);
+    const pos = new THREE.Vector3().setFromMatrixPosition(car.matrixWorld);
 
     window.dispatchEvent(new CustomEvent('minimap-player-update', {
       detail: {

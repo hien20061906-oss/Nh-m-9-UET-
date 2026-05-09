@@ -32,11 +32,11 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 15000,
+    rainCount: 3000,
     rainLength: 0.8,
     rainSpread: 600,
     snowCount: 0,
-    snowSize: 0.18,
+    snowSize: 0.4,
     snowOpacity: 0.85,
     lightningCount: 3,
     skyTop: '#4a5a6a',
@@ -54,8 +54,8 @@ const WEATHER_PRESETS = {
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 600,
-    snowCount: 15000,
-    snowSize: 0.22,
+    snowCount: 3000,
+    snowSize: 0.4,
     snowOpacity: 0.9,
     lightningCount: 0,
     skyTop: '#b0c8e8',
@@ -109,8 +109,8 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 20000;
-function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
+const MAX_RAIN = 3000;
+function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
   const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
@@ -188,16 +188,17 @@ function Rain({ count, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) 
       <lineBasicMaterial
         color={color}
         transparent
-        opacity={0.65}
+        opacity={0.8}
         depthWrite={false}
+        linewidth={2}
       />
     </lineSegments>
   );
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 20000;
-function Snow({ count, snowSize = 0.18, snowOpacity = 0.85, snowSpread = 600 }) {
+const MAX_SNOW = 3000;
+function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 600 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
   const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);

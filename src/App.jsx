@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, use
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
 import * as THREE from 'three';
-import { useGLTF, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload } from '@react-three/drei';
+import { useGLTF, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload, Stats } from '@react-three/drei';
 import { threeToCannon, ShapeType } from 'three-to-cannon';
 import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
 import RaceManager, { RaceContext, RACE_STATES, RaceTicker } from './RaceManager';
@@ -11,6 +11,7 @@ import Minimap, { MinimapPlayerTracker } from './Minimap';
 import { AchievementSystem, AchievementUI, AchievementBoard } from './Achievement';
 import TeleportOverlay from './TeleportOverlay';
 import RaceTrack from './RaceTrack';
+import { SpeedTrap, PoliceUI, ChasingUAV, PoliceChaseUI } from './PoliceSystem';
 import RaceUI from './RaceUI';
 import LoginScreen from './LoginScreen';
 import { MapCoins, CoinParticles3D, CoinCollectUI } from './CoinSystem';
@@ -110,7 +111,7 @@ const LoadingScreen = ({ onFinished }) => {
       </Canvas>
       <style>{`
         .loading-screen-wrapper {
-          position: fixed; inset: 0; z-index: 9999; background: #050505;
+          position: fixed; inset: 0; z-index: 999999; background: #050505;
           display: flex; flex-direction: column; align-items: center; justify-content: center;
           color: white; font-family: 'Chakra Petch', sans-serif; overflow: hidden;
         }
@@ -590,6 +591,9 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     }
 
     const speed = Math.sqrt(velocity.current[0] ** 2 + velocity.current[2] ** 2);
+    // Tính km/h và gửi event cho SpeedometerUI
+    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(speed * 3.6) }));
+
     const baseForce = boost ? 1500 : 800;
     // Tỉ lệ lực động cơ theo khối lượng để xe nặng (Rolls Royce) vẫn chạy nhanh
     const engineForce = baseForce * ((config.mass || 150) / 150);
@@ -965,6 +969,11 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
 
     // 4. Đẩy vận tốc vào vật lý (Để nó tự dừng khi đụng tường)
     api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
+    
+    // Tính km/h và gửi event cho SpeedometerUI
+    const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
+    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+
     api.angularVelocity.set(0, 0, 0); // Chống xoay bậy bạ
     api.rotation.set(0, localState.current.rot, 0);
 
@@ -977,6 +986,16 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
 
     // Lưu vị trí cuối cho hệ thống chuyển đổi xe
     lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastRot.current = [0, localState.current.rot, 0];
+
+    // Phát event để App lưu vị trí trước khi đổi xe (throttle 500ms)
+    const now = Date.now();
+    if (!Helicopter._lastPosEvent || now - Helicopter._lastPosEvent > 500) {
+      Helicopter._lastPosEvent = now;
+      window.dispatchEvent(new CustomEvent('vehicle-pos-update', {
+        detail: { pos: [...lastPos.current], rot: [...lastRot.current] }
+      }));
+    }
 
     const dt = Math.min(delta, 0.1);
     let diff = localState.current.rot - smoothRot.current;
@@ -997,7 +1016,7 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
       <group ref={physicsRef} />
 
       {/* Mô hình hiển thị thực sự */}
-      <group ref={visualRef}>
+      <group ref={visualRef} name="chassis-body-visual">
         <primitive object={scene.clone()} />
         {/* Cánh quạt chính - Thông số chuẩn GitHub */}
         <Propeller
@@ -1146,6 +1165,7 @@ useGLTF.preload('/models/car/alternative/wheel2.glb');
 useGLTF.preload('/models/car/rolls_royce/chassis.glb');
 useGLTF.preload('/models/car/rolls_royce/wheel.glb');
 useGLTF.preload('/models/car/ship/chassis.glb');
+useGLTF.preload('/models/uav/uav.glb');
 
 // ─── APP ─────────────────────────────────────────────────────────────────────
 function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userAvatar, gold, setGold, unlockedAchievements, setUnlockedAchievements, savedPos, savedRot }) {
@@ -1185,29 +1205,35 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
   // activeVehicle (state) = xe đang thực sự render
   // isSwitching = true khi đang trong giai đoạn cleanup (render null)
   const [activeVehicle, setActiveVehicle] = useState(vehicleFolder);
-  const [isSwitching, setIsSwitching] = useState(false);
+  // Khởi tạo isSwitching = true để lần đầu mount (hoặc khi bật Hitbox làm remount Game) 
+  // xe sẽ đợi 1.5s cho Map load xong collision rồi mới rơi xuống
+  const [isSwitching, setIsSwitching] = useState(true);
 
   useEffect(() => {
-    // Nếu prop giống state → không cần làm gì
-    if (vehicleFolder === activeVehicle) return;
-
-    // Phase 1: XÓA xe cũ ngay lập tức (render null)
-    setIsSwitching(true);
-
-    // Clamp tọa độ an toàn
-    if (lastPos.current) {
-      lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 0.5), lastPos.current[2]];
+    let t;
+    if (vehicleFolder !== activeVehicle) {
+      // Đổi xe
+      setIsSwitching(true);
+      if (lastPos.current) {
+        // Nhấc xe lên 2m để rơi xuống an toàn
+        lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
+      }
+      if (lastRot.current) {
+        lastRot.current = [0, lastRot.current[1], 0];
+      }
+      t = setTimeout(() => {
+        setActiveVehicle(vehicleFolder);
+        setIsSwitching(false);
+      }, 1500);
+    } else {
+      // Lần đầu mount hoặc remount do bật Hitbox
+      if (lastPos.current) {
+        lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
+      }
+      t = setTimeout(() => {
+        setIsSwitching(false);
+      }, 1500);
     }
-    if (lastRot.current) {
-      lastRot.current = [0, lastRot.current[1], 0];
-    }
-
-    // Phase 2: Sau 1500ms (Cannon.js đã dọn sạch body cũ hoàn toàn) → mount xe mới
-    // Tăng từ 800ms → 1500ms để đảm bảo physics world sạch hoàn toàn kể cả trên máy chậm
-    const t = setTimeout(() => {
-      setActiveVehicle(vehicleFolder);  // cập nhật xe thực tế
-      setIsSwitching(false);            // cho phép render
-    }, 1500);
     return () => clearTimeout(t);
   }, [vehicleFolder, activeVehicle]);
 
@@ -1294,6 +1320,7 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
         lastPos={lastPos}
         unlocked={unlockedAchievements}
         onUnlock={(key) => setUnlockedAchievements(prev => [...new Set([...prev, key])])}
+        debug={debug}
       />
     </>
   );
@@ -1343,6 +1370,179 @@ const MobileControls = ({ vehicleFolder }) => {
     </div>
   );
 };
+
+// ─── SPEEDOMETER UI ──────────────────────────────────────────────────────────
+const SpeedometerUI = () => {
+  const speedRef = useRef(null);
+
+  useEffect(() => {
+    const handler = (e) => {
+      if (speedRef.current) {
+        speedRef.current.innerText = `${e.detail}`;
+      }
+    };
+    window.addEventListener('vehicle-speed', handler);
+    return () => window.removeEventListener('vehicle-speed', handler);
+  }, []);
+
+  return (
+    <div style={{
+      position: 'fixed',
+      bottom: '30px',
+      right: '30px',
+      background: 'linear-gradient(135deg, rgba(10, 10, 20, 0.8) 0%, rgba(30, 20, 40, 0.9) 100%)',
+      border: '2px solid rgba(0, 242, 255, 0.5)',
+      borderRadius: '50%',
+      width: '120px',
+      height: '120px',
+      display: 'flex',
+      flexDirection: 'column',
+      justifyContent: 'center',
+      alignItems: 'center',
+      boxShadow: '0 0 20px rgba(0, 242, 255, 0.4), inset 0 0 15px rgba(0, 242, 255, 0.2)',
+      backdropFilter: 'blur(8px)',
+      color: 'white',
+      fontFamily: "'Chakra Petch', sans-serif",
+      zIndex: 100,
+      pointerEvents: 'none',
+      userSelect: 'none'
+    }}>
+      <div style={{
+        fontSize: '42px',
+        fontWeight: '900',
+        lineHeight: '1',
+        textShadow: '0 0 10px #00f2ff, 0 0 20px #00f2ff',
+        color: '#fff',
+        fontStyle: 'italic'
+      }}>
+        <span ref={speedRef}>0</span>
+      </div>
+      <div style={{
+        fontSize: '14px',
+        fontWeight: '700',
+        color: '#00f2ff',
+        letterSpacing: '2px',
+        marginTop: '2px',
+        textShadow: '0 0 5px #00f2ff'
+      }}>
+        KM/H
+      </div>
+      {/* Vòng cung viền trang trí */}
+      <svg style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', transform: 'rotate(135deg)' }}>
+        <circle cx="60" cy="60" r="56" fill="none" stroke="rgba(255,255,255,0.1)" strokeWidth="6" />
+        <circle cx="60" cy="60" r="56" fill="none" stroke="#00f2ff" strokeWidth="6" strokeDasharray="351" strokeDashoffset="80" strokeLinecap="round" />
+      </svg>
+    </div>
+  );
+};
+
+// ─── SETTINGS MENU ───────────────────────────────────────────────────────────
+function SettingsMenu({ masterMuted, toggleMasterMute, onLogout }) {
+  const [open, setOpen] = useState(false);
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.key === 'Escape') {
+        setOpen((prev) => !prev);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, []);
+
+  return (
+    <>
+      {/* Gear Button */}
+      <div style={{ position: 'fixed', bottom: '80px', left: '20px', zIndex: 150 }}>
+        <button onClick={() => setOpen(true)} style={{
+          width: '50px', height: '50px', borderRadius: '50%',
+          background: 'rgba(0,0,0,0.6)', 
+          border: '2px solid rgba(255,255,255,0.15)',
+          color: '#fff', fontSize: '24px', cursor: 'pointer',
+          display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(10px)',
+          transition: 'all 0.3s ease'
+        }} title="Cài đặt" onMouseOver={(e) => e.currentTarget.style.transform = 'scale(1.1) rotate(90deg)'} onMouseOut={(e) => e.currentTarget.style.transform = 'scale(1) rotate(0deg)'}>
+          ⚙️
+        </button>
+      </div>
+
+      {/* Modal Settings Panel */}
+      {open && (
+        <div style={{
+          position: 'fixed', inset: 0, zIndex: 99999,
+          background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
+          display: 'flex', alignItems: 'center', justifyContent: 'center',
+          fontFamily: "'Chakra Petch', sans-serif"
+        }}>
+          <div style={{
+            background: 'rgba(10, 10, 20, 0.95)',
+            border: '2px solid #00f2ff',
+            borderRadius: '24px',
+            width: '90%', maxWidth: '400px',
+            padding: '30px',
+            boxShadow: '0 0 30px rgba(0, 242, 255, 0.3), inset 0 0 15px rgba(0, 242, 255, 0.1)',
+            position: 'relative',
+            display: 'flex', flexDirection: 'column', gap: '20px'
+          }}>
+            {/* Nút Đóng */}
+            <button onClick={() => setOpen(false)} style={{
+              position: 'absolute', top: '15px', right: '15px',
+              background: 'none', border: 'none', color: '#ff4444',
+              fontSize: '24px', cursor: 'pointer', fontWeight: 'bold'
+            }}>✕</button>
+
+            <h2 style={{ color: '#00f2ff', textAlign: 'center', margin: '0 0 10px 0', textTransform: 'uppercase', letterSpacing: '2px', textShadow: '0 0 10px #00f2ff' }}>
+              Cài Đặt Hệ Thống
+            </h2>
+
+            {/* Khung chứa các tuỳ chọn */}
+            <div style={{ background: 'rgba(255,255,255,0.05)', padding: '15px', borderRadius: '16px', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+              
+              <div style={{ color: 'white', fontWeight: 'bold', fontSize: '14px', letterSpacing: '1px' }}>Âm Thanh</div>
+              
+              {/* Sound Toggle */}
+              <button onClick={toggleMasterMute} style={{
+                padding: '12px 15px', borderRadius: '12px',
+                background: masterMuted ? 'rgba(255, 68, 68, 0.2)' : 'rgba(0, 242, 255, 0.1)',
+                border: `1px solid ${masterMuted ? '#ff4444' : '#00f2ff'}`,
+                color: '#fff', cursor: 'pointer',
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                fontFamily: "'Chakra Petch', sans-serif", fontWeight: 'bold', fontSize: '16px',
+                transition: 'all 0.2s'
+              }}>
+                <span>{masterMuted ? 'Đang Tắt Âm Thanh' : 'Đang Bật Âm Thanh'}</span>
+                <span style={{ fontSize: '20px' }}>{masterMuted ? '🔇' : '🔊'}</span>
+              </button>
+
+              {/* Music Player */}
+              <div style={{ 
+                background: 'rgba(0,0,0,0.5)', padding: '15px', borderRadius: '12px', 
+                border: '1px solid rgba(255,255,255,0.1)' 
+              }}>
+                <div style={{ color: '#aaa', fontSize: '12px', marginBottom: '10px' }}>TRÌNH PHÁT NHẠC</div>
+                <BackgroundMusic masterMuted={masterMuted} inMenu={true} />
+              </div>
+            </div>
+
+            {/* Logout */}
+            <button onClick={onLogout} style={{
+              marginTop: '10px', width: '100%',
+              padding: '15px', borderRadius: '16px',
+              background: 'linear-gradient(90deg, #ff4444, #cc0000)',
+              border: 'none', color: '#fff', cursor: 'pointer',
+              display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '10px',
+              fontFamily: "'Chakra Petch', sans-serif", fontWeight: 'bold', fontSize: '18px',
+              textTransform: 'uppercase', boxShadow: '0 5px 15px rgba(255,0,0,0.3)',
+              transition: 'all 0.2s'
+            }} onMouseOver={(e) => e.currentTarget.style.transform = 'translateY(-2px)'} onMouseOut={(e) => e.currentTarget.style.transform = 'translateY(0)'}>
+              🚪 Đăng Xuất Khỏi Game
+            </button>
+          </div>
+        </div>
+      )}
+    </>
+  );
+}
 
 export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
@@ -1398,6 +1598,27 @@ export default function App() {
   // Hệ thống hồ sơ người chơi
   const [userName, setUserName] = useState('Người Chơi 1');
   const [userAvatar, setUserAvatar] = useState('👤');
+
+  // Lắng nghe sự kiện trừ tiền (từ UAV đuổi bắt, v.v...)
+  useEffect(() => {
+    const handleDeductGold = (e) => {
+      const amount = e.detail.amount;
+      setGold(prev => {
+        const newGold = Math.max(0, prev - amount);
+        const accountsStr = localStorage.getItem('game_accounts');
+        if (accountsStr && userName && !userName.startsWith('Khách_')) {
+          const accounts = JSON.parse(accountsStr);
+          if (accounts[userName]) {
+            accounts[userName].gold = newGold;
+            localStorage.setItem('game_accounts', JSON.stringify(accounts));
+          }
+        }
+        return newGold;
+      });
+    };
+    window.addEventListener('deduct-gold', handleDeductGold);
+    return () => window.removeEventListener('deduct-gold', handleDeductGold);
+  }, [userName, setGold]);
   const [showProfile, setShowProfile] = useState(false); // Không hiện profile lúc đầu nữa vì đã có màn hình login
   const [isLoggedIn, setIsLoggedIn] = useState(false);
   const [isGameLoading, setIsGameLoading] = useState(true);
@@ -2138,7 +2359,13 @@ export default function App() {
           </div>
         </div>
 
-        <Canvas camera={{ position: [0, 5, 10], fov: 60 }} style={{ background: 'transparent' }}>
+        <Canvas 
+          camera={{ position: [0, 5, 10], fov: 60 }} 
+          style={{ background: 'transparent' }}
+          dpr={1}
+          performance={{ min: 0.5 }}
+        >
+          <Stats />
           <RaceTicker />
           <MinimapPlayerTracker />
           <CoinParticles3D />
@@ -2146,8 +2373,8 @@ export default function App() {
           <Physics
             gravity={[0, -9.81, 0]}
             allowSleep={true}
-            iterations={12}
-            tolerance={0.002}
+            iterations={10}
+            tolerance={0.01}
             broadphase="SAP"
             defaultContactMaterial={{
               friction: 0.3,
@@ -2156,41 +2383,95 @@ export default function App() {
               contactEquationRelaxation: 4
             }}
           >
-            {/* Bản đồ và ground - không bao giờ remount */}
-            <Suspense fallback={null}>
-              <Ground />
-              <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
-              <RaceTrack
-                position={[180, 0, -300]}
-                scale={0.7}
-                onEnterTrack={() => window.dispatchEvent(new CustomEvent('teleport-start', { detail: { name: 'Vạch Xuất Phát', position: [172, 1, -303], rotation: 0 } }))}
-                sensorOffset={[-100, 0, 50]}
-                sensorRadius={30}
-                uiScale={1.2}
-                sensorRotation={-90}
-                finishOffset={[-8, 1, 5]}
-                startLinePos={[172, 1, -303]}
-              />
-            </Suspense>
-            {/* Game chỉ chứa vehicle - remount khi đổi xe → reset sạch physics xe */}
-            <Suspense fallback={null}>
-              <Game
-                key={vehicleFolder}
-                weather={activeWeather}
-                vehicleFolder={vehicleFolder}
-                setVehicleFolder={setVehicleFolder}
-                debug={debug}
-                userName={userName}
-                userAvatar={userAvatar}
-                gold={gold}
-                setGold={setGold}
-                unlockedAchievements={unlockedAchievements}
-                setUnlockedAchievements={setUnlockedAchievements}
-                savedPos={savedPos}
-                savedRot={savedRot}
-              />
-            </Suspense>
-            <Preload all />
+            {debug ? (
+              <Debug color="black" scale={1.1}>
+                {/* Bản đồ và ground - không bao giờ remount */}
+                <Suspense fallback={null}>
+                  <Ground />
+                  <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
+                  
+                  {/* Trạm Bắn Tốc Độ */}
+                  <SpeedTrap position={[0, 1, -50]} debug={debug} speedLimit={100} scale={[25, 10, 8]} />
+                  <ChasingUAV initialPosition={[0, 10, -50]} debug={debug} />
+
+                  <RaceTrack
+                    position={[180, 0, -300]}
+                    scale={0.7}
+                    debug={debug}
+                    onEnterTrack={() => window.dispatchEvent(new CustomEvent('teleport-start', { detail: { name: 'Vạch Xuất Phát', position: [172, 1, -303], rotation: 0 } }))}
+                    sensorOffset={[-100, 0, 50]}
+                    sensorRadius={30}
+                    uiScale={1.2}
+                    sensorRotation={-90}
+                    finishOffset={[-8, 1, 5]}
+                    startLinePos={[172, 1, -303]}
+                  />
+                </Suspense>
+                {/* Game chỉ chứa vehicle - remount khi đổi xe → reset sạch physics xe */}
+                <Suspense fallback={null}>
+                  <Game
+                    key={vehicleFolder}
+                    weather={activeWeather}
+                    vehicleFolder={vehicleFolder}
+                    setVehicleFolder={setVehicleFolder}
+                    debug={debug}
+                    userName={userName}
+                    userAvatar={userAvatar}
+                    gold={gold}
+                    setGold={setGold}
+                    unlockedAchievements={unlockedAchievements}
+                    setUnlockedAchievements={setUnlockedAchievements}
+                    savedPos={savedPos}
+                    savedRot={savedRot}
+                  />
+                </Suspense>
+                <Preload all />
+              </Debug>
+            ) : (
+              <>
+                {/* Bản đồ và ground - không bao giờ remount */}
+                <Suspense fallback={null}>
+                  <Ground />
+                  <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
+                  
+                  {/* Trạm Bắn Tốc Độ */}
+                  <SpeedTrap position={[6, 0.75, -64]} debug={debug} speedLimit={100} scale={[8, 1.5,0.1]} />
+                  <ChasingUAV initialPosition={[6, 10, -64]} debug={debug} />
+
+                  <RaceTrack
+                    position={[180, 0, -300]}
+                    scale={0.7}
+                    debug={debug}
+                    onEnterTrack={() => window.dispatchEvent(new CustomEvent('teleport-start', { detail: { name: 'Vạch Xuất Phát', position: [172, 1, -303], rotation: 0 } }))}
+                    sensorOffset={[-100, 0, 50]}
+                    sensorRadius={30}
+                    uiScale={1.2}
+                    sensorRotation={-90}
+                    finishOffset={[-8, 1, 5]}
+                    startLinePos={[172, 1, -303]}
+                  />
+                </Suspense>
+                {/* Game chỉ chứa vehicle - remount khi đổi xe → reset sạch physics xe */}
+                <Suspense fallback={null}>
+                  <Game
+                    key={vehicleFolder}
+                    weather={activeWeather}
+                    vehicleFolder={vehicleFolder}
+                    setVehicleFolder={setVehicleFolder}
+                    debug={debug}
+                    userName={userName}
+                    userAvatar={userAvatar}
+                    gold={gold}
+                    setGold={setGold}
+                    unlockedAchievements={unlockedAchievements}
+                    setUnlockedAchievements={setUnlockedAchievements}
+                    savedPos={savedPos}
+                    savedRot={savedRot}
+                  />
+                </Suspense>
+                <Preload all />
+              </>
+            )}
           </Physics>
         </Canvas>
         {!isRacing && <WeatherPanel weather={weather} setWeather={setWeather} />}
@@ -2199,9 +2480,20 @@ export default function App() {
         <CoinCollectUI />
         <Minimap />
         <TeleportOverlay />
+        <PoliceUI />
+        <PoliceChaseUI />
         <WeatherAudio weather={weather} masterMuted={masterMuted} />
-        <BackgroundMusic masterMuted={masterMuted} />
-        <MasterMuteButton muted={masterMuted} onToggle={toggleMasterMute} />
+        <SettingsMenu 
+          masterMuted={masterMuted} 
+          toggleMasterMute={toggleMasterMute} 
+          onLogout={() => {
+            setIsLoggedIn(false);
+            if (auth.currentUser) {
+              auth.signOut().catch(console.error);
+            }
+          }} 
+        />
+        <SpeedometerUI />
       </div>
     </RaceManager>
   );

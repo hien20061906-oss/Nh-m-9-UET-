@@ -154,7 +154,7 @@ const MUSIC_TRACKS = [
   { name: 'music3', title: 'Sudo' },
 ];
 
-export function BackgroundMusic({ masterMuted }) {
+export function BackgroundMusic({ masterMuted, inMenu }) {
   const [trackIndex, setTrackIndex] = useState(() => Math.floor(Math.random() * MUSIC_TRACKS.length));
   const [isPlaying, setIsPlaying] = useState(false);
   const [musicVolume, setMusicVolume] = useState(0.15);
@@ -233,18 +233,21 @@ export function BackgroundMusic({ masterMuted }) {
 
   return (
     <div style={{
-      position: 'fixed',
-      bottom: '20px',
-      left: '20px',
+      position: inMenu ? 'relative' : 'fixed',
+      bottom: inMenu ? 'auto' : '20px',
+      left: inMenu ? 'auto' : '20px',
       zIndex: 150,
       display: 'flex',
       alignItems: 'center',
+      justifyContent: inMenu ? 'space-between' : 'flex-start',
       gap: '6px',
-      background: 'rgba(0,0,0,0.7)',
+      background: inMenu ? 'rgba(0,0,0,0.6)' : 'rgba(0,0,0,0.7)',
       backdropFilter: 'blur(10px)',
-      borderRadius: '30px',
-      padding: '6px 12px',
-      border: '1px solid rgba(255,255,255,0.15)',
+      borderRadius: inMenu ? '12px' : '30px',
+      padding: inMenu ? '8px 12px' : '6px 12px',
+      border: `2px solid ${inMenu ? 'rgba(255,255,255,0.15)' : 'rgba(255,255,255,0.15)'}`,
+      width: inMenu ? '100%' : 'auto',
+      boxSizing: 'border-box'
     }}>
       {/* Play/Pause */}
       <button
