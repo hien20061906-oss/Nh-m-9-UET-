@@ -1,9 +1,9 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, useContext, useTransition, useLayoutEffect } from 'react';
-
+  
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
 import * as THREE from 'three';
-import { useGLTF, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload, Stats } from '@react-three/drei';
+import { useGLTF, useAnimations, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload, Stats } from '@react-three/drei';
 import { threeToCannon, ShapeType } from 'three-to-cannon';
 import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
 import RaceManager, { RaceContext, RACE_STATES, RaceTicker } from './RaceManager';
@@ -12,11 +12,18 @@ import { AchievementSystem, AchievementUI, AchievementBoard } from './Achievemen
 import TeleportOverlay from './TeleportOverlay';
 import RaceTrack from './RaceTrack';
 import { SpeedTrap, PoliceUI, ChasingUAV, PoliceChaseUI } from './PoliceSystem';
+import { WindTurbine } from './Turbine';
+import Ocean from './Ocean';
+import UnderwaterEffect from './UnderwaterEffect';
+import { FishSwarm } from './FishSystem';
+import { WaterVehicleStation } from './WaterVehicleStation';
 import RaceUI from './RaceUI';
 import LoginScreen from './LoginScreen';
 import { MapCoins, CoinParticles3D, CoinCollectUI } from './CoinSystem';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
+import FishingMinigame from './FishingMinigame';
+
 import { playSound, playRandomSound, startLoop, stopLoop, fadeVolume, BackgroundMusic, WeatherAudio, MasterMuteButton, setGlobalMuted } from './SoundManager';
 // ─── LOADING SCREEN ──────────────────────────────────────────────────────────
 // Tải trước toàn bộ GLB trong loading → vào game đổi xe tức thì mãi mãi
@@ -31,6 +38,7 @@ const PRELOAD_ASSETS = [
   { url: '/models/car/helicopter/chassis.glb',      label: 'Than May Bay',      size:   430000 },
   { url: '/models/car/helicopter/rotor_main.glb',   label: 'Canh quat chinh',   size:   150000 },
   { url: '/models/car/helicopter/rotor_tail.glb',   label: 'Canh quat duoi',    size:   420000 },
+  { url: '/models/car/submarine/chassis.glb',       label: 'Tau Ngam',          size:  2500000 },
 ];
 const TOTAL_ASSET_SIZE = PRELOAD_ASSETS.reduce((s, a) => s + a.size, 0);
 
@@ -487,12 +495,23 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     indexUpAxis: 1,
   }));
 
+  // ????????????????????????????????????????????????????????????????????????
+  // ?  VEHICLE SWITCHING MECHANISM - KH�NG S?A PH?N N�Y                  ?
+  // ?  Sau 800ms mount, dispatch 'vehicle-physics-ready' l�n App.jsx.     ?
+  // ?  App s? nh?n event �� v� set vehicleCooldown = 0 �? m? kh�a n�t.   ?
+  // ?  N?u gi?m 800ms ? xe l?i ngay khi �?i (cannon.js ch�a init xong)  ?
+  // ?  N?u x�a dispatch ? n�t �?i xe b? kh�a m?i m?i                    ?
+  // ????????????????????????????????????????????????????????????????????????
   // ─── PHYSICS SETTLING: ẩn xe 600ms sau mount để cannon.js tính xong vị trí bánh xe ───
   const [settled, setSettled] = useState(false);
   useEffect(() => {
     chassisApi.velocity.set(0, 0, 0);
     chassisApi.angularVelocity.set(0, 0, 0);
-    const t = setTimeout(() => setSettled(true), 600);
+    // Báo cho App biết xe đã ready (sau khi physics settle xong)
+    const t = setTimeout(() => {
+      setSettled(true);
+      window.dispatchEvent(new CustomEvent('vehicle-physics-ready'));
+    }, 800); // 1.2s để Rolls Royce 25MB cũng có thể initialise cannon xong
     return () => clearTimeout(t);
   }, [chassisApi]);
 
@@ -925,6 +944,14 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     };
   }, []);
 
+  // Báo cho App biết Helicopter đã ready
+  useEffect(() => {
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('vehicle-physics-ready'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, []);
+
   useFrame((state, delta) => {
     if (carLightRef.current && weather) {
       // Light logic removed as requested
@@ -1042,12 +1069,639 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
   );
 };
 
+const Submarine = ({ lastPos, lastRot, weather }) => {
+  const { scene } = useGLTF('/models/car/submarine/chassis.glb');
+  const camAngle = useRef({ x: 0, y: 0.35, dist: 12 });
+  const smoothRot = useRef(0);
+  const k = usePlayerControls();
+  const carLightRef = useRef();
+
+  // ??? SUBMARINE SONAR SOUND ???????????????????????????????????????????????
+  const sonarAudio = useRef(null);
+  useEffect(() => {
+    // Sử dụng lại âm thanh xoay nhẹ nhưng giảm pitch để nghe giống dưới nước hơn
+    const audio = new Audio('/sounds/vehicle/spin/41051 Glass stone turning loop 09-full.mp3');
+    audio.loop = true;
+    audio.volume = 0.1;
+    audio.playbackRate = 0.4;
+    sonarAudio.current = audio;
+    audio.play().catch(() => { });
+    return () => { audio.pause(); audio.currentTime = 0; };
+  }, []);
+
+  // ??? PHYSICS BODY (H?N) ?????????????????????????????????????????????????????
+  const [physicsRef, api] = useCompoundBody(() => ({
+    mass: 1.2, // Tàu ngầm nặng hơn chút
+    type: 'Dynamic',
+    position: [lastPos.current[0], lastPos.current[1], lastPos.current[2]],
+    shapes: [
+      { type: 'Box', args: [1.5, 1.2, 2.5], position: [0, 0, 0] }, // Thân tàu ngầm
+    ],
+    fixedRotation: true,
+    linearDamping: 0.1, // Đã fix giật lag
+    angularDamping: 0.1,
+    allowSleep: false,
+  }));
+
+  const visualRef = useRef();
+  const localState = useRef({
+    pos: new THREE.Vector3().fromArray(lastPos.current),
+    rot: 0,
+    vel: new THREE.Vector3(),
+  });
+
+  useEffect(() => {
+    let down = false;
+    const onWheel = (e) => camAngle.current.dist = Math.max(5, Math.min(50, camAngle.current.dist + e.deltaY * 0.05));
+    const onDown = (e) => { if (e.button === 1) down = true; };
+    const onUp = (e) => { if (e.button === 1) down = false; };
+    const onMove = (e) => {
+      if (!down) return;
+      camAngle.current.x -= e.movementX * 0.005;
+      camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + e.movementY * 0.005));
+    };
+    window.addEventListener('wheel', onWheel);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, []);
+
+
+  // ?? VEHICLE SWITCHING � KH�NG X�A. B�o App m? kh�a n�t sau khi physics init xong.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('vehicle-physics-ready'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  useFrame((state, delta) => {
+    if (!visualRef.current || !physicsRef.current) return;
+    const controls = k.current;
+
+    const SPEED = 15; // Chậm hơn trực thăng
+    const VERT_SPEED = 8;
+    const YAW_SPEED = 1.0;
+
+    if (sonarAudio.current) {
+      const isMoving = controls.forward || controls.backward || controls.up || controls.down;
+      const targetVol = isMoving ? 0.15 : 0.08;
+      sonarAudio.current.volume = THREE.MathUtils.lerp(sonarAudio.current.volume, targetVol, 0.05);
+    }
+
+    if (controls.left) localState.current.rot += YAW_SPEED * delta;
+    if (controls.right) localState.current.rot -= YAW_SPEED * delta;
+
+    const targetVel = new THREE.Vector3();
+    if (controls.forward) {
+      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+    } else if (controls.backward) {
+      targetVel.z = Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+    }
+
+    if (controls.up) targetVel.y = VERT_SPEED;
+    if (controls.down) targetVel.y = -VERT_SPEED;
+
+    const currentPos = new THREE.Vector3();
+    physicsRef.current.getWorldPosition(currentPos);
+
+    // Giới hạn độ cao mặt nước (y = -8) - Dùng soft limit thay vì hard set vị trí
+    if (currentPos.y > -8.5) {
+      if (targetVel.y > 0) targetVel.y = 0; // Không cho ngoi lên thêm
+      // Không tự động kéo xuống nữa, người chơi phải giữ Shift để lặn xuống
+    }
+
+    // Lerp nhanh hơn để xe phản hồi ngay khi bấm phím
+    const moveLerp = (controls.forward || controls.backward) ? 0.3 : 0.15;
+    const vertLerp = (controls.up || controls.down) ? 0.4 : 0.2;
+    localState.current.vel.x = THREE.MathUtils.lerp(localState.current.vel.x, targetVel.x, moveLerp);
+    localState.current.vel.z = THREE.MathUtils.lerp(localState.current.vel.z, targetVel.z, moveLerp);
+    localState.current.vel.y = THREE.MathUtils.lerp(localState.current.vel.y, targetVel.y, vertLerp);
+    
+    // Giữ vận tốc theo chiều thẳng đứng nếu vượt quá mặt nước
+    if (currentPos.y > -8.5 && localState.current.vel.y > 0) {
+      localState.current.vel.y = 0;
+    }
+    
+    api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
+    
+    const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
+    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+
+    api.angularVelocity.set(0, 0, 0);
+    api.rotation.set(0, localState.current.rot, 0);
+
+    visualRef.current.position.copy(currentPos);
+    visualRef.current.rotation.y = localState.current.rot;
+
+    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastRot.current = [0, localState.current.rot, 0];
+
+    const now = Date.now();
+    if (!Submarine._lastPosEvent || now - Submarine._lastPosEvent > 500) {
+      Submarine._lastPosEvent = now;
+      window.dispatchEvent(new CustomEvent('vehicle-pos-update', {
+        detail: { pos: [...lastPos.current], rot: [...lastRot.current] }
+      }));
+    }
+
+    const dt = Math.min(delta, 0.1);
+    let diff = localState.current.rot - smoothRot.current;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    smoothRot.current += diff * (1 - Math.exp(-10 * dt));
+
+    const dist = camAngle.current.dist;
+    const hDist = Math.cos(camAngle.current.y) * dist;
+    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+
+    state.camera.position.copy(currentPos).add(offset);
+    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+  });
+
+  return (
+    <>
+      <group ref={physicsRef} />
+      <group ref={visualRef} name="chassis-body-visual">
+        <primitive object={scene.clone()} />
+      </group>
+    </>
+  );
+};
+
+
+
+const MiniSubmarine = ({ lastPos, lastRot, weather }) => {
+  const SCALE = 5; // <--- B?N CH?NH SCALE C?A T�U MINI ? ��Y NH�! (0.5 l� b?ng m?t n?a t�u th�?ng)
+  const { scene } = useGLTF('/models/car/minisub/chassis.glb');
+  const camAngle = useRef({ x: 0, y: 0.35, dist: 12 });
+  const smoothRot = useRef(0);
+  const k = usePlayerControls();
+  const carLightRef = useRef();
+
+  // ??? SUBMARINE SONAR SOUND ???????????????????????????????????????????????
+  const sonarAudio = useRef(null);
+  useEffect(() => {
+    // Sử dụng lại âm thanh xoay nhẹ nhưng giảm pitch để nghe giống dưới nước hơn
+    const audio = new Audio('/sounds/vehicle/spin/41051 Glass stone turning loop 09-full.mp3');
+    audio.loop = true;
+    audio.volume = 0.1;
+    audio.playbackRate = 0.4;
+    sonarAudio.current = audio;
+    audio.play().catch(() => { });
+    return () => { audio.pause(); audio.currentTime = 0; };
+  }, []);
+
+  // ??? PHYSICS BODY (H?N) ?????????????????????????????????????????????????????
+  const [physicsRef, api] = useCompoundBody(() => ({
+    mass: 0.8, // Mini sub nhẹ hơn
+    type: 'Dynamic',
+    position: [lastPos.current[0], lastPos.current[1], lastPos.current[2]],
+    shapes: [
+      { type: 'Box', args: [1.5 * SCALE, 1.2 * SCALE, 2.5 * SCALE], position: [0, 0, 0] }, // Thân tàu ngầm
+    ],
+    fixedRotation: true,
+    linearDamping: 0.1, // Đã fix giật lag
+    angularDamping: 0.1,
+    allowSleep: false,
+  }));
+
+  const visualRef = useRef();
+  const localState = useRef({
+    pos: new THREE.Vector3().fromArray(lastPos.current),
+    rot: 0,
+    vel: new THREE.Vector3(),
+  });
+
+  useEffect(() => {
+    let down = false;
+    const onWheel = (e) => camAngle.current.dist = Math.max(5, Math.min(50, camAngle.current.dist + e.deltaY * 0.05));
+    const onDown = (e) => { if (e.button === 1) down = true; };
+    const onUp = (e) => { if (e.button === 1) down = false; };
+    const onMove = (e) => {
+      if (!down) return;
+      camAngle.current.x -= e.movementX * 0.005;
+      camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + e.movementY * 0.005));
+    };
+    window.addEventListener('wheel', onWheel);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, []);
+
+
+  // ?? VEHICLE SWITCHING � KH�NG X�A. B�o App m? kh�a n�t sau khi physics init xong.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('vehicle-physics-ready'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  useFrame((state, delta) => {
+    if (!visualRef.current || !physicsRef.current) return;
+    const controls = k.current;
+
+    const SPEED = 15; // Chậm hơn trực thăng
+    const VERT_SPEED = 8;
+    const YAW_SPEED = 1.0;
+
+    if (sonarAudio.current) {
+      const isMoving = controls.forward || controls.backward || controls.up || controls.down;
+      const targetVol = isMoving ? 0.15 : 0.08;
+      sonarAudio.current.volume = THREE.MathUtils.lerp(sonarAudio.current.volume, targetVol, 0.05);
+    }
+
+    if (controls.left) localState.current.rot += YAW_SPEED * delta;
+    if (controls.right) localState.current.rot -= YAW_SPEED * delta;
+
+    const targetVel = new THREE.Vector3();
+    if (controls.forward) {
+      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+    } else if (controls.backward) {
+      targetVel.z = Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+    }
+
+    if (controls.up) targetVel.y = VERT_SPEED;
+    if (controls.down) targetVel.y = -VERT_SPEED;
+
+    const currentPos = new THREE.Vector3();
+    physicsRef.current.getWorldPosition(currentPos);
+
+    // Giới hạn độ cao mặt nước (y = -8) - Dùng soft limit thay vì hard set vị trí
+    if (currentPos.y > -8.5) {
+      if (targetVel.y > 0) targetVel.y = 0; // Không cho ngoi lên thêm
+      // Không tự động kéo xuống nữa, người chơi phải giữ Shift để lặn xuống
+    }
+
+    // Lerp nhanh hơn để xe phản hồi ngay khi bấm phím
+    const moveLerp = (controls.forward || controls.backward) ? 0.3 : 0.15;
+    const vertLerp = (controls.up || controls.down) ? 0.4 : 0.2;
+    localState.current.vel.x = THREE.MathUtils.lerp(localState.current.vel.x, targetVel.x, moveLerp);
+    localState.current.vel.z = THREE.MathUtils.lerp(localState.current.vel.z, targetVel.z, moveLerp);
+    localState.current.vel.y = THREE.MathUtils.lerp(localState.current.vel.y, targetVel.y, vertLerp);
+    
+    // Giữ vận tốc theo chiều thẳng đứng nếu vượt quá mặt nước
+    if (currentPos.y > -8.5 && localState.current.vel.y > 0) {
+      localState.current.vel.y = 0;
+    }
+    
+    api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
+    
+    const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
+    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+
+    api.angularVelocity.set(0, 0, 0);
+    api.rotation.set(0, localState.current.rot, 0);
+
+    visualRef.current.position.copy(currentPos);
+    visualRef.current.rotation.y = localState.current.rot;
+
+    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastRot.current = [0, localState.current.rot, 0];
+
+    const now = Date.now();
+    if (!MiniSubmarine._lastPosEvent || now - MiniSubmarine._lastPosEvent > 500) {
+      MiniSubmarine._lastPosEvent = now;
+      window.dispatchEvent(new CustomEvent('vehicle-pos-update', {
+        detail: { pos: [...lastPos.current], rot: [...lastRot.current] }
+      }));
+    }
+
+    const dt = Math.min(delta, 0.1);
+    let diff = localState.current.rot - smoothRot.current;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    smoothRot.current += diff * (1 - Math.exp(-10 * dt));
+
+    const dist = camAngle.current.dist;
+    const hDist = Math.cos(camAngle.current.y) * dist;
+    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+
+    state.camera.position.copy(currentPos).add(offset);
+    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+  });
+
+  return (
+    <>
+      <group ref={physicsRef} />
+      <group ref={visualRef} name="chassis-body-visual" scale={SCALE}>
+        <primitive object={scene.clone()} />
+      </group>
+    </>
+  );
+};
+
+
+
+const Boat = ({ lastPos, lastRot, weather }) => {
+  const { scene } = useGLTF('/models/car/boat/chassis.glb');
+  const camAngle = useRef({ x: 0, y: 0.35, dist: 12 });
+  const smoothRot = useRef(0);
+  const k = usePlayerControls();
+  const carLightRef = useRef();
+
+  // ??? SUBMARINE SONAR SOUND ???????????????????????????????????????????????
+  const sonarAudio = useRef(null);
+  useEffect(() => {
+    // Sử dụng lại âm thanh xoay nhẹ nhưng giảm pitch để nghe giống dưới nước hơn
+    const audio = new Audio('/sounds/vehicle/spin/41051 Glass stone turning loop 09-full.mp3');
+    audio.loop = true;
+    audio.volume = 0.1;
+    audio.playbackRate = 0.4;
+    sonarAudio.current = audio;
+    audio.play().catch(() => { });
+    return () => { audio.pause(); audio.currentTime = 0; };
+  }, []);
+
+  // ??? PHYSICS BODY (H?N) ?????????????????????????????????????????????????????
+  const [physicsRef, api] = useCompoundBody(() => ({
+    mass: 5.0, 
+    type: 'Dynamic',
+    position: [lastPos.current[0], -7.5, lastPos.current[2]], 
+    shapes: [
+      { type: 'Box', args: [1.2, 0.8, 2.0], position: [0, 0, 0] }, // Thu nhỏ hitbox để tránh kẹt terrain
+    ],
+    fixedRotation: true,
+    linearDamping: 0.01, // Giảm damping tối đa
+    angularDamping: 0.01,
+    allowSleep: false,
+  }));
+
+  const visualRef = useRef();
+  const targetHeight = useRef(-7.8); // Khóa cứng độ cao mặt nước (y = -8 + 0.2)
+  const localState = useRef({
+    pos: new THREE.Vector3().fromArray([lastPos.current[0], -7.8, lastPos.current[2]]),
+    rot: 0,
+    vel: new THREE.Vector3(),
+  });
+
+  useEffect(() => {
+    let down = false;
+    const onWheel = (e) => camAngle.current.dist = Math.max(5, Math.min(50, camAngle.current.dist + e.deltaY * 0.05));
+    const onDown = (e) => { if (e.button === 1) down = true; };
+    const onUp = (e) => { if (e.button === 1) down = false; };
+    const onMove = (e) => {
+      if (!down) return;
+      camAngle.current.x -= e.movementX * 0.005;
+      camAngle.current.y = Math.max(0.05, Math.min(Math.PI / 2.1, camAngle.current.y + e.movementY * 0.005));
+    };
+    window.addEventListener('wheel', onWheel);
+    window.addEventListener('pointerdown', onDown);
+    window.addEventListener('pointerup', onUp);
+    window.addEventListener('pointermove', onMove);
+    return () => {
+      window.removeEventListener('wheel', onWheel);
+      window.removeEventListener('pointerdown', onDown);
+      window.removeEventListener('pointerup', onUp);
+      window.removeEventListener('pointermove', onMove);
+    };
+  }, []);
+
+
+  // ?? VEHICLE SWITCHING � KH�NG X�A. B�o App m? kh�a n�t sau khi physics init xong.
+  useEffect(() => {
+    const t = setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('vehicle-physics-ready'));
+    }, 800);
+    return () => clearTimeout(t);
+  }, []);
+
+  useFrame((state, delta) => {
+    if (!visualRef.current || !physicsRef.current) return;
+    const controls = k.current;
+
+    const SPEED = 80; // Tăng thêm nữa
+    const VERT_SPEED = 0; 
+    const YAW_SPEED = 2.2; 
+    const THRUST_LERP = 0.05; // Mượt hơn
+
+    if (sonarAudio.current) {
+      const isMoving = controls.forward || controls.backward || controls.up || controls.down;
+      const targetVol = isMoving ? 0.15 : 0.08;
+      sonarAudio.current.volume = THREE.MathUtils.lerp(sonarAudio.current.volume, targetVol, 0.05);
+    }
+
+    if (controls.left) localState.current.rot += YAW_SPEED * delta;
+    if (controls.right) localState.current.rot -= YAW_SPEED * delta;
+
+    const targetVel = new THREE.Vector3();
+    // Sử dụng Math.sin cho Z và Math.cos cho X nếu model bị lệch 90 độ, 
+    // hoặc thử đảo dấu nếu nó đi ngược.
+    if (controls.forward) {
+      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+    } else if (controls.backward) {
+      targetVel.z = Math.cos(localState.current.rot) * SPEED;
+      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+    }
+
+    const currentPos = new THREE.Vector3();
+    physicsRef.current.getWorldPosition(currentPos);
+
+    // Lực đẩy Archimesdes (Lò xo): Giữ thuyền luôn ở độ cao mặt nước lúc spawn
+    targetVel.y = (targetHeight.current - currentPos.y) * 10.0;
+
+    // Bỏ qua lerp vận tốc để thuyền phản hồi tức thì
+    localState.current.vel.x = targetVel.x;
+    localState.current.vel.z = targetVel.z;
+    localState.current.vel.y = targetVel.y;
+    
+    api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
+    
+    const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
+    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+
+    api.angularVelocity.set(0, 0, 0);
+    api.rotation.set(0, localState.current.rot, 0);
+
+    visualRef.current.position.copy(currentPos);
+    visualRef.current.rotation.y = localState.current.rot;
+
+    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastRot.current = [0, localState.current.rot, 0];
+
+    const now = Date.now();
+    if (!Boat._lastPosEvent || now - Boat._lastPosEvent > 500) {
+      Boat._lastPosEvent = now;
+      window.dispatchEvent(new CustomEvent('vehicle-pos-update', {
+        detail: { pos: [...lastPos.current], rot: [...lastRot.current] }
+      }));
+    }
+
+    const dt = Math.min(delta, 0.1);
+    let diff = localState.current.rot - smoothRot.current;
+    diff = ((diff + Math.PI) % (2 * Math.PI)) - Math.PI;
+    smoothRot.current += diff * (1 - Math.exp(-10 * dt));
+
+    const dist = camAngle.current.dist;
+    const hDist = Math.cos(camAngle.current.y) * dist;
+    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+
+    state.camera.position.copy(currentPos).add(offset);
+    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+  });
+
+  return (
+    <>
+      <group ref={physicsRef} />
+      <group ref={visualRef} name="chassis-body-visual">
+        <primitive object={scene.clone()} />
+      </group>
+    </>
+  );
+};
+
+
+
+// ─── LIGHTHOUSE ──────────────────────────────────────────────────────────────
+const LighthouseGLB = ({ position }) => {
+  const group = useRef();
+  const { scene, animations } = useGLTF('/models/lighthouse/lighthouse.glb');
+  const { actions } = useAnimations(animations, group);
+
+  // Tự động ẩn các vệt sáng có sẵn trong file GLB
+  useEffect(() => {
+    scene.traverse((obj) => {
+      if (obj.isMesh) {
+        const name = obj.name.toLowerCase();
+        // Ẩn các mesh có tên chứa "light", "beam", "cone", "fan", "glow" (những thứ tạo vệt sáng)
+        if (name.includes('light') || name.includes('beam') || name.includes('cone') || name.includes('fan') || name.includes('glow')) {
+          obj.visible = false;
+        }
+      }
+    });
+  }, [scene]);
+
+  // Tự động phát tất cả animation trong file
+  useEffect(() => {
+    if (!actions) return;
+    Object.values(actions).forEach(action => {
+      action.reset().play();
+    });
+  }, [actions]);
+
+  const cloned = React.useMemo(() => scene.clone(), [scene]);
+  return <group ref={group} position={position}><primitive object={cloned} /></group>;
+};
+useGLTF.preload('/models/lighthouse/lighthouse.glb');
+
+const Lighthouse = ({ position = [-285, 0, 50] }) => {
+  const lightBeamRef = useRef();
+  const lightRef = useRef();
+  const glowRef = useRef();
+
+  // Hitbox vật lý tĩnh - Phóng to để khớp với mô hình đá và tháp
+  const [hitboxRef] = useBox(() => ({
+    type: 'Static',
+    position: [position[0], position[1] + 20, position[2]],
+    args: [20, 40, 20], // Rộng 20m, Cao 40m
+  }), [position]); // Cập nhật hitbox khi position thay đổi
+
+  useFrame((state, delta) => {
+    // Xoay beacon
+    if (lightBeamRef.current) {
+      lightBeamRef.current.rotation.y += 1.5 * delta;
+    }
+    // Nhấp nháy đèn
+    if (lightRef.current) {
+      const t = state.clock.getElapsedTime();
+      const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * 1.5 * Math.PI));
+      lightRef.current.intensity = pulse * 10;
+    }
+    if (glowRef.current) {
+      const t = state.clock.getElapsedTime();
+      const pulse = 0.5 + 0.5 * Math.abs(Math.sin(t * 1.5 * Math.PI));
+      glowRef.current.material.emissiveIntensity = pulse * 4;
+    }
+  });
+
+  return (
+    <group position={position}>
+      {/* GLB model của bạn */}
+      <Suspense fallback={null}>
+        <LighthouseGLB position={[0, 0, 0]} />
+      </Suspense>
+
+      {/* ── Đèn nhấp nháy ở đỉnh (Chỉ giữ lại bóng đèn) ── */}
+      <group position={[0, 11.5, 0]}>
+        {/* Bóng đèn phát sáng nhỏ */}
+        <mesh ref={glowRef}>
+          <sphereGeometry args={[0.35, 12, 12]} />
+          <meshStandardMaterial
+            color="#ffee88"
+            emissive="#ffaa00"
+            emissiveIntensity={3}
+            toneMapped={false}
+          />
+        </mesh>
+      </group>
+
+      {/* ── VÙNG SÁNG HÌNH TRÒN (LẤY HẢI ĐĂNG LÀM TÂM) ── */}
+      <group position={[0, 10, 0]}>
+        {/* Đèn tỏa sáng thực tế xung quanh chân tháp */}
+        <pointLight color="#ffee88" intensity={100} distance={100} decay={2} />
+        
+        {/* Lớp quầng sáng mờ rộng (trang trí) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]}>
+          <circleGeometry args={[50, 64]} />
+          <meshBasicMaterial 
+            color="#ffaa00" 
+            transparent 
+            opacity={0.15} 
+            depthWrite={false}
+          />
+        </mesh>
+        
+        {/* Lớp quầng sáng tâm sáng hơn (trang trí) */}
+        <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.05, 0]}>
+          <circleGeometry args={[10, 64]} />
+          <meshBasicMaterial 
+            color="#ffeeaa" 
+            transparent 
+            opacity={0.25} 
+            depthWrite={false}
+          />
+        </mesh>
+      </group>
+
+      {/* Hitbox vật lý */}
+      <group ref={hitboxRef} />
+
+      {/* GLB model (optional - hiện khi có file) */}
+      <Suspense fallback={null}>
+        <LighthouseGLB position={[0, 0, 0]} />
+      </Suspense>
+    </group>
+  );
+};
+
 // ─── GROUND ──────────────────────────────────────────────────────────────────
+
 const Ground = () => {
-  const [ref] = usePlane(() => ({ rotation: [-Math.PI / 2, 0, 0], position: [0, 0, 0] }));
+  // Thay vì dùng usePlane (vật lý vô tận), dùng useBox với đúng kích thước để xe có thể rớt xuống biển
+  const [ref] = useBox(() => ({ 
+    type: 'Static',
+    args: [600, 10, 950], // Tạo khối hộp dày 10m
+    position: [0, -5, -75] // Hạ tâm xuống -5 để mặt trên cùng nằm vừa y ở mốc 0
+  }));
   return (
     <mesh ref={ref} receiveShadow>
-      <planeGeometry args={[2000, 2000]} />
+      <boxGeometry args={[600, 10, 950]} />
       <meshStandardMaterial color="#FF7A2F" roughness={1} metalness={0} />
     </mesh>
   );
@@ -1215,11 +1869,27 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
       // Đổi xe
       setIsSwitching(true);
       if (lastPos.current) {
-        // Nhấc xe lên 2m để rơi xuống an toàn
-        lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
-      }
-      if (lastRot.current) {
-        lastRot.current = [0, lastRot.current[1], 0];
+        // 1. Chuyển TỚI tàu ngầm -> Teleport ra biển
+        if (vehicleFolder === 'submarine') {
+          lastPos.current = [-330, -40, 65]; // Hạ thấp xuống nữa
+          if (lastRot.current) lastRot.current = [0, 0, 0];
+        } else if (vehicleFolder === 'minisub') {
+          lastPos.current = [-320, -18, 70]; // Tọa độ tàu mini
+          if (lastRot.current) lastRot.current = [0, 0, 0];
+        } else if (vehicleFolder === 'boat') {
+          lastPos.current = [-355, -8.3, 65]; // Thuyền nổi trên mặt nước giữa biển
+          if (lastRot.current) lastRot.current = [0, 0, 0];
+        } 
+        // 2. TỪ tàu ngầm về xe khác -> Teleport về bến an toàn
+        else if (activeVehicle === 'submarine' || activeVehicle === 'minisub' || activeVehicle === 'boat') {
+          lastPos.current = [-289, 1, 55];
+          if (lastRot.current) lastRot.current = [0, lastRot.current[1] || 0, 0];
+        } 
+        // 3. Đổi xe bình thường -> Nhấc lên 2m
+        else {
+          lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
+          if (lastRot.current) lastRot.current = [0, lastRot.current[1] || 0, 0];
+        }
       }
       t = setTimeout(() => {
         setActiveVehicle(vehicleFolder);
@@ -1228,7 +1898,9 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     } else {
       // Lần đầu mount hoặc remount do bật Hitbox
       if (lastPos.current) {
-        lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
+        if (activeVehicle !== 'submarine' && activeVehicle !== 'minisub' && activeVehicle !== 'boat') {
+          lastPos.current = [lastPos.current[0], Math.max(lastPos.current[1], 2.0), lastPos.current[2]];
+        }
       }
       t = setTimeout(() => {
         setIsSwitching(false);
@@ -1245,6 +1917,12 @@ function Game({ weather, vehicleFolder, setVehicleFolder, debug, userName, userA
     VehicleContainer = null;
   } else if (activeVehicle === 'helicopter') {
     VehicleContainer = <Helicopter key="helicopter" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
+  } else if (activeVehicle === 'submarine') {
+    VehicleContainer = <Submarine key="submarine" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
+  } else if (activeVehicle === 'minisub') {
+    VehicleContainer = <MiniSubmarine key="minisub" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
+  } else if (activeVehicle === 'boat') {
+    VehicleContainer = <Boat key="boat" lastPos={lastPos} lastRot={lastRot} weather={weather} />;
   } else {
     VehicleContainer = (
       <Car
@@ -1353,14 +2031,14 @@ const MobileControls = ({ vehicleFolder }) => {
       <div className="mc-left">
         <button className="mc-btn" onPointerDown={handlePointerDown('KeyA')} onPointerUp={handlePointerUp('KeyA')} onPointerLeave={handlePointerUp('KeyA')}>◀</button>
         <button className="mc-btn" onPointerDown={handlePointerDown('KeyD')} onPointerUp={handlePointerUp('KeyD')} onPointerLeave={handlePointerUp('KeyD')}>▶</button>
-        <button className="mc-btn action-btn" style={{ marginLeft: '10px' }} onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{vehicleFolder === 'helicopter' ? 'Xuống' : 'Nitro'}</button>
+        <button className="mc-btn action-btn" style={{ marginLeft: '10px' }} onPointerDown={handlePointerDown('ShiftLeft')} onPointerUp={handlePointerUp('ShiftLeft')} onPointerLeave={handlePointerUp('ShiftLeft')}>{(vehicleFolder === 'helicopter' || vehicleFolder === 'submarine') ? 'Xuống' : 'Nitro'}</button>
       </div>
 
       <div className="mc-top-right">
         {vehicleFolder !== 'helicopter' && vehicleFolder !== 'ship' && (
           <button className="mc-btn action-btn" style={{ fontSize: '20px' }} onPointerDown={handlePointerDown('KeyH')} onPointerUp={handlePointerUp('KeyH')} onPointerLeave={handlePointerUp('KeyH')}>📢</button>
         )}
-        <button className="mc-btn action-btn" onPointerDown={handlePointerDown('Space')} onPointerUp={handlePointerUp('Space')} onPointerLeave={handlePointerUp('Space')}>{vehicleFolder === 'helicopter' ? 'Lên' : 'Phanh'}</button>
+        <button className="mc-btn action-btn" onPointerDown={handlePointerDown('Space')} onPointerUp={handlePointerUp('Space')} onPointerLeave={handlePointerUp('Space')}>{(vehicleFolder === 'helicopter' || vehicleFolder === 'submarine') ? 'Lên' : 'Phanh'}</button>
       </div>
 
       <div className="mc-right">
@@ -1467,14 +2145,13 @@ function SettingsMenu({ masterMuted, toggleMasterMute, onLogout }) {
       </div>
 
       {/* Modal Settings Panel */}
-      {open && (
+      <div style={{
+        position: 'fixed', inset: 0, zIndex: 99999,
+        background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
+        display: open ? 'flex' : 'none', alignItems: 'center', justifyContent: 'center',
+        fontFamily: "'Chakra Petch', sans-serif"
+      }}>
         <div style={{
-          position: 'fixed', inset: 0, zIndex: 99999,
-          background: 'rgba(0,0,0,0.8)', backdropFilter: 'blur(10px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontFamily: "'Chakra Petch', sans-serif"
-        }}>
-          <div style={{
             background: 'rgba(10, 10, 20, 0.95)',
             border: '2px solid #00f2ff',
             borderRadius: '24px',
@@ -1539,10 +2216,39 @@ function SettingsMenu({ masterMuted, toggleMasterMute, onLogout }) {
             </button>
           </div>
         </div>
-      )}
     </>
   );
 }
+
+const LighthouseDistanceChecker = ({ showFishingGame, setIsNearLighthouse }) => {
+  useFrame((state) => {
+    if (showFishingGame) return;
+    const playerPos = state.camera.position;
+    // Kiểm tra tất cả vị trí ngọn hải đăng có trong scene
+    const lighthousePositions = [
+        { x: -500, z: 50 },
+        { x: -450, z: 50 }
+    ];
+    
+    let nearAny = false;
+    for (const lp of lighthousePositions) {
+        const dx = playerPos.x - lp.x;
+        const dz = playerPos.z - lp.z;
+        const distSq = dx*dx + dz*dz;
+        if (distSq < 25 * 25) { // Giảm xuống 25m cho chuẩn
+            nearAny = true;
+            break;
+        }
+    }
+
+    if (nearAny) {
+      setIsNearLighthouse(prev => prev ? prev : true);
+    } else {
+      setIsNearLighthouse(prev => prev ? false : prev);
+    }
+  });
+  return null;
+};
 
 export default function App() {
   const [vehicleFolder, setVehicleFolder] = useState('default');
@@ -1550,32 +2256,105 @@ export default function App() {
   const vehicleLoadProgress = useVehicleLoadProgress();
   // Cooldown 6 giây sau khi đổi xe — tránh switch quá nhanh gây lỗi physics
   const [vehicleCooldown, setVehicleCooldown] = useState(0); // giây còn lại
+  const [showDockShop, setShowDockShop] = useState(false); // Menu bến tàu
   const cooldownTimer = useRef(null);
   // Lưu vị trí xe trước khi đổi → Game mới spawn đúng chỗ
   const savedPos = useRef([0, 0.5, 0]);
   const savedRot = useRef([0, 0, 0]);
 
+  // ?????????????????????????????????????????????????????????????????????????????
+  // ?  C� CH? �?I XE � �? T?I �U, KH�NG S?A L?I                            ?
+  // ?  1. setVehicleFolder(folder) ? React remount Game component ngay l?p t?c ?
+  // ?  2. setVehicleCooldown(1)    ? Kh�a n�t �?i xe t?m th?i                 ?
+  // ?  3. Xe m?i mount ? sau 800ms dispatch 'vehicle-physics-ready'            ?
+  // ?  4. onReady() b�n d�?i nh?n event ? setVehicleCooldown(0) ? m? kh�a     ?
+  // ?                                                                           ?
+  // ?  C?NH B�O: KH�NG d�ng startTransition ? ��y ? n� g�y delay 40+ gi�y    ?
+  // ?  C?NH B�O: KH�NG th�m interval countdown ? event �? t? x? l? timing     ?
+  // ?????????????????????????????????????????????????????????????????????????????
   const handleSelectVehicle = useCallback((folder) => {
     if (vehicleCooldown > 0) return; // Đang trong cooldown, bỏ qua
     playSound('click', 0.3);
-    startTransition(() => setVehicleFolder(folder));
+
+    // Sửa lỗi kẹt xe: Nếu đang ở tàu ngầm, phải ép tọa độ về bờ trước khi Game remount
+    if (vehicleFolder === 'submarine' || vehicleFolder === 'minisub' || vehicleFolder === 'boat') {
+      savedPos.current = [-289, 1, 55];
+      savedRot.current = [0, 0, 0];
+    } else if (folder === 'helicopter') {
+      if (savedPos.current) {
+        savedPos.current = [savedPos.current[0], -10, savedPos.current[2]];
+      }
+    } else if (savedPos.current) {
+      savedPos.current = [savedPos.current[0], Math.max(savedPos.current[1], 2.0), savedPos.current[2]];
+    }
+
+    setVehicleFolder(folder);
     setShowMenu(false);
-    // Bắt đầu đếm ngược 6 giây (>= thời gian cleanup physics 1.5s để an toàn)
-    setVehicleCooldown(6);
-    if (cooldownTimer.current) clearInterval(cooldownTimer.current);
-    cooldownTimer.current = setInterval(() => {
-      setVehicleCooldown(prev => {
-        if (prev <= 1) {
-          clearInterval(cooldownTimer.current);
-          cooldownTimer.current = null;
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-  }, [vehicleCooldown, startTransition]);
+    setVehicleCooldown(1);
+  }, [vehicleCooldown, vehicleFolder]);
+
+  const [showFishingGame, setShowFishingGame] = useState(false);
+  const [isNearLighthouse, setIsNearLighthouse] = useState(false);
+
+
+  // Lắng nghe phím E để mở game
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (e.code === 'KeyE' && isNearLighthouse && !showFishingGame) {
+        setShowFishingGame(true);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isNearLighthouse, showFishingGame]);
+
+  // Đặc biệt: Đổi sang phương tiện nước và spawn dưới biển
+
+  const handleSelectWaterVehicle = useCallback((folder) => {
+    if (vehicleCooldown > 0) return;
+    playSound('click', 0.3);
+    
+    if (folder === 'minisub') {
+      savedPos.current = [-320, -18, 70];
+    } else if (folder === 'boat') {
+      savedPos.current = [-355, -8.3, 65];
+    } else {
+      savedPos.current = [-330, -40, 65];
+    }
+    savedRot.current = [0, 0, 0];
+    
+    setVehicleFolder(folder);
+    setShowDockShop(false);
+    setVehicleCooldown(1);
+  }, [vehicleCooldown]);
+
+  // Lắng nghe sự kiện mở Dock Shop từ WaterVehicleStation
+  useEffect(() => {
+    const handler = () => setShowDockShop(true);
+    window.addEventListener('open-dock-shop', handler);
+    return () => window.removeEventListener('open-dock-shop', handler);
+  }, []);
 
   useEffect(() => () => { if (cooldownTimer.current) clearInterval(cooldownTimer.current); }, []);
+
+  // ?????????????????????????????????????????????????????????????????????????????
+  // ?  VEHICLE SWITCHING � PH?N NH?N EVENT M? KH�A N�T �?I XE               ?
+  // ?  M?i vehicle component dispatch 'vehicle-physics-ready' sau 800ms mount  ?
+  // ?  ? onReady() nh?n event ? setVehicleCooldown(0) ? n�t �?i xe m? kh�a   ?
+  // ?  KH�NG X�A useEffect n�y. KH�NG thay b?ng setTimeout/interval b�n ngo�i ?
+  // ?????????????????????????????????????????????????????????????????????????????
+  // Đây là thời điểm thực sự an toàn để cho phép người chơi đổi xe tiếp
+  useEffect(() => {
+    const onReady = () => {
+      if (cooldownTimer.current) {
+        clearInterval(cooldownTimer.current);
+        cooldownTimer.current = null;
+      }
+      setVehicleCooldown(0);
+    };
+    window.addEventListener('vehicle-physics-ready', onReady);
+    return () => window.removeEventListener('vehicle-physics-ready', onReady);
+  }, []);
   const [showMenu, setShowMenu] = useState(false);
   const [showShop, setShowShop] = useState(false);
   const [debug, setDebug] = useState(false);
@@ -1659,7 +2438,10 @@ export default function App() {
     alternative: 2000,
     helicopter: 2000,
     ship: 2000,
-    rolls_royce: 2000
+    rolls_royce: 2000,
+    submarine: 3600,
+    minisub: 2360,
+    boat: 1360
   };
 
   const buyVehicle = (type) => {
@@ -2198,7 +2980,7 @@ export default function App() {
                 {(() => {
                   const pct = vehicleLoadProgress['default'] ?? 0;
                   const ready = pct >= 100;
-                  const locked = vehicleCooldown > 0 || !ready;
+                  const locked = vehicleCooldown > 0; // Models da preload qua loading screen, chi can doi cooldown
                   return (
                     <div
                       className={`vehicle-option ${vehicleFolder === 'default' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
@@ -2219,7 +3001,7 @@ export default function App() {
                 {unlockedVehicles.includes('alternative') && (() => {
                   const pct = vehicleLoadProgress['alternative'] ?? 0;
                   const ready = pct >= 100;
-                  const locked = vehicleCooldown > 0 || !ready;
+                  const locked = vehicleCooldown > 0; // Models da preload qua loading screen, chi can doi cooldown
                   return (
                     <div
                       className={`vehicle-option ${vehicleFolder === 'alternative' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
@@ -2240,7 +3022,7 @@ export default function App() {
                 {unlockedVehicles.includes('helicopter') && (() => {
                   const pct = vehicleLoadProgress['helicopter'] ?? 0;
                   const ready = pct >= 100;
-                  const locked = vehicleCooldown > 0 || !ready;
+                  const locked = vehicleCooldown > 0; // Models da preload qua loading screen, chi can doi cooldown
                   return (
                     <div
                       className={`vehicle-option ${vehicleFolder === 'helicopter' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
@@ -2261,7 +3043,7 @@ export default function App() {
                 {unlockedVehicles.includes('ship') && (() => {
                   const pct = vehicleLoadProgress['ship'] ?? 0;
                   const ready = pct >= 100;
-                  const locked = vehicleCooldown > 0 || !ready;
+                  const locked = vehicleCooldown > 0; // Models da preload qua loading screen, chi can doi cooldown
                   return (
                     <div
                       className={`vehicle-option ${vehicleFolder === 'ship' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
@@ -2282,7 +3064,7 @@ export default function App() {
                 {unlockedVehicles.includes('rolls_royce') && (() => {
                   const pct = vehicleLoadProgress['rolls_royce'] ?? 0;
                   const ready = pct >= 100;
-                  const locked = vehicleCooldown > 0 || !ready;
+                  const locked = vehicleCooldown > 0; // Models da preload qua loading screen, chi can doi cooldown
                   return (
                     <div
                       className={`vehicle-option ${vehicleFolder === 'rolls_royce' ? 'selected' : ''} ${locked ? 'loading' : ''}`}
@@ -2359,40 +3141,100 @@ export default function App() {
           </div>
         </div>
 
+        {/* Dock Shop Overlay (Chuyên phương tiện nước) */}
+        <div className={`overlay ${showDockShop ? 'active' : ''}`}>
+          <div className="menu-card" style={{ border: '2px solid #00ffcc', boxShadow: '0 0 30px rgba(0,255,204,0.3)' }}>
+            <h2 style={{ color: '#00ffcc' }}>CỬA HÀNG BẾN TÀU</h2>
+            <p style={{ color: '#aaa', fontSize: '0.8rem', marginBottom: '20px' }}>Chọn phương tiện để hạ thủy ngay tại đây</p>
+            <div className="vehicle-options">
+              <div className="vehicle-option">
+                <span className="vehicle-icon" style={{ fontSize: '3rem' }}>🚢</span>
+                <h3>Tàu Ngầm (Submarine)</h3>
+                <span className="price-tag">🪙 3,600</span>
+                {!unlockedVehicles.includes('submarine') ? (
+                  <button className="buy-btn" style={{ background: '#00ffcc', color: '#000' }} onClick={() => buyVehicle('submarine')}>MUA</button>
+                ) : (
+                  <button className="buy-btn" style={{ background: '#4caf50' }} onClick={() => handleSelectWaterVehicle('submarine')}>TRIỆU HỒI</button>
+                )}
+              </div>
+              <div className="vehicle-option">
+                <span className="vehicle-icon" style={{ fontSize: '3rem' }}>🫧</span>
+                <h3>Tàu Ngầm Mini (Mini Sub)</h3>
+                <span className="price-tag">🪙 2,360</span>
+                {!unlockedVehicles.includes('minisub') ? (
+                  <button className="buy-btn" style={{ background: '#00ffcc', color: '#000' }} onClick={() => buyVehicle('minisub')}>MUA</button>
+                ) : (
+                  <button className="buy-btn" style={{ background: '#ff0055', color: '#fff' }} onClick={() => handleSelectWaterVehicle('minisub')}>TRIỆU HỒI</button>
+                )}
+              </div>
+              <div className="vehicle-option">
+                <span className="vehicle-icon" style={{ fontSize: '3rem' }}>🚤</span>
+                <h3>Thuyền (Boat)</h3>
+                <span className="price-tag">🪙 1,360</span>
+                {!unlockedVehicles.includes('boat') ? (
+                  <button className="buy-btn" style={{ background: '#00ffcc', color: '#000' }} onClick={() => buyVehicle('boat')}>MUA</button>
+                ) : (
+                  <button className="buy-btn" style={{ background: '#2196f3', color: '#fff' }} onClick={() => handleSelectWaterVehicle('boat')}>TRIỆU HỒI</button>
+                )}
+              </div>
+            </div>
+            <button className="close-btn" onClick={() => setShowDockShop(false)}>ĐÓNG</button>
+          </div>
+        </div>
+
         <Canvas 
           camera={{ position: [0, 5, 10], fov: 60 }} 
           style={{ background: 'transparent' }}
-          dpr={1}
+          dpr={[1, 2]} // Tự động điều chỉnh độ phân giải giữa 1 và 2 để nét hơn mà vẫn mượt
           performance={{ min: 0.5 }}
-        >
-          <Stats />
-          <RaceTicker />
-          <MinimapPlayerTracker />
-          <CoinParticles3D />
-          <Environment weather={activeWeather} />
-          <Physics
-            gravity={[0, -9.81, 0]}
-            allowSleep={true}
-            iterations={10}
-            tolerance={0.01}
-            broadphase="SAP"
-            defaultContactMaterial={{
-              friction: 0.3,
-              restitution: 0.1,
-              contactEquationStiffness: 1e7,
-              contactEquationRelaxation: 4
+            gl={{ 
+              powerPreference: "high-performance",
+              antialias: true, // Bật lại khử răng cưa để tránh răng cưa quá nặng
+              stencil: false,
+              depth: true,
+              alpha: true, // PHẢI ĐỂ TRUE để bầu trời và môi trường hiển thị đúng
+              precision: 'highp',
+              desynchronized: false // Tắt cái này vì nó có thể gây lỗi hiển thị trên một số máy
             }}
           >
+            <LighthouseDistanceChecker showFishingGame={showFishingGame} setIsNearLighthouse={setIsNearLighthouse} />
+            <Stats />
+            <RaceTicker />
+            <MinimapPlayerTracker />
+            <CoinParticles3D />
+            <Environment weather={activeWeather} />
+            <Physics
+              gravity={[0, -9.81, 0]}
+              allowSleep={true}
+              iterations={5} // Giảm iterations vật lý một chút để tăng FPS (vẫn đủ mượt)
+              tolerance={0.01}
+              broadphase="SAP"
+              defaultContactMaterial={{
+                friction: 0.3,
+                restitution: 0.1,
+                contactEquationStiffness: 1e7,
+                contactEquationRelaxation: 4
+              }}
+            >
             {debug ? (
               <Debug color="black" scale={1.1}>
                 {/* Bản đồ và ground - không bao giờ remount */}
                 <Suspense fallback={null}>
                   <Ground />
+                  <Lighthouse position={[-450, -50, 50]} />
                   <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
                   
                   {/* Trạm Bắn Tốc Độ */}
                   <SpeedTrap position={[0, 1, -50]} debug={debug} speedLimit={100} scale={[25, 10, 8]} />
                   <ChasingUAV initialPosition={[0, 10, -50]} debug={debug} />
+                  
+                  {/* Cối xay gió (Hiển thị đúng 6 cái như đã đặt trong Blender) */}
+                  <WindTurbine position={[0, 0, -10]} scale={0.8} />
+                  
+                  {/* Các Turbine nhân bản thêm */}
+                  <WindTurbine position={[38, 0, -10]} scale={0.8} rotation={[0, 0, 0]} />
+                  <WindTurbine position={[0, 0, 0]} scale={0.8} rotation={[0, 0, 0]} />
+                  <WindTurbine position={[0, 0, 0]} scale={0.8} rotation={[0, 0, 0]} />
 
                   <RaceTrack
                     position={[180, 0, -300]}
@@ -2432,11 +3274,30 @@ export default function App() {
                 {/* Bản đồ và ground - không bao giờ remount */}
                 <Suspense fallback={null}>
                   <Ground />
+                  <Lighthouse position={[-500, -17, 50]} />
                   <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
                   
+                  {/* Biển bao quanh đảo - thấp hơn mặt đất hiện tại */}
+                  <Ocean y={-8} size={2000} color="#29b6d4" />
+                  <UnderwaterEffect />
+                  <FishSwarm count={5} modelPath="/models/fish/shark.glb" baseScale={3} />
+                  {/* Coralfish cần xoay trục để đầu cá hướng đúng về phía trước (trục Z) */}
+                  <FishSwarm count={30} modelPath="/models/fish/coralfish.glb" baseScale={0.1} rotationOffset={[0, Math.PI / 2, 0]} />
+
+                  {/* Bến tàu đỗ phương tiện dưới nước - Truyền hàm mở Shop */}
+                  <WaterVehicleStation position={[-289, 0, 50]} onOpenShop={() => window.dispatchEvent(new CustomEvent('open-dock-shop'))} />
+
                   {/* Trạm Bắn Tốc Độ */}
                   <SpeedTrap position={[6, 0.75, -64]} debug={debug} speedLimit={100} scale={[8, 1.5,0.1]} />
                   <ChasingUAV initialPosition={[6, 10, -64]} debug={debug} />
+                  
+                  {/* Cối xay gió (Hiển thị đúng 6 cái như đã đặt trong Blender) */}
+                  <WindTurbine position={[0, 0, -10]} scale={0.8} />
+                  
+                  {/* Các Turbine nhân bản thêm */}
+                  <WindTurbine position={[38, 0, -10]} scale={0.8} rotation={[0, 0, 0]} />
+                  <WindTurbine position={[-22, 0, -10]} scale={0.8} rotation={[0, 0, 0]} />
+                  <WindTurbine position={[60, 0, -10]} scale={0.8} rotation={[0, 0, 0]} />
 
                   <RaceTrack
                     position={[180, 0, -300]}
@@ -2494,7 +3355,37 @@ export default function App() {
           }} 
         />
         <SpeedometerUI />
+
+        {/* Giao diện Minigame Câu Cá */}
+        {showFishingGame && (
+          <FishingMinigame 
+            onExit={() => setShowFishingGame(false)} 
+            onWin={() => setShowFishingGame(false)}
+            onCatch={(goldVal) => setGold(prev => prev + goldVal)}
+          />
+        )}
+
+        {/* Gợi ý nhấn E khi ở gần Hải đăng */}
+        {isNearLighthouse && !showFishingGame && (
+          <div style={{
+            position: 'fixed', bottom: '20%', left: '50%', transform: 'translateX(-50%)',
+            backgroundColor: 'rgba(0,0,0,0.8)', color: '#fff', padding: '15px 30px',
+            borderRadius: '50px', fontSize: '20px', fontWeight: 'bold', zIndex: 9000,
+            border: '2px solid #ffd700', boxShadow: '0 0 25px rgba(255,215,0,0.5)',
+            backdropFilter: 'blur(10px)', animation: 'pulse 1.5s infinite'
+          }}>
+            Nhấn <span style={{ color: '#ffd700' }}>[ E ]</span> để bắt đầu câu cá
+            <style>{`
+              @keyframes pulse {
+                0% { transform: translateX(-50%) scale(1); }
+                50% { transform: translateX(-50%) scale(1.05); }
+                100% { transform: translateX(-50%) scale(1); }
+              }
+            `}</style>
+          </div>
+        )}
       </div>
+
     </RaceManager>
   );
 }
@@ -2511,6 +3402,7 @@ useGLTF.preload('/models/car/ship/chassis.glb');
 useGLTF.preload('/models/car/helicopter/chassis.glb');
 useGLTF.preload('/models/car/helicopter/rotor_main.glb');
 useGLTF.preload('/models/car/helicopter/rotor_tail.glb');
+useGLTF.preload('/models/car/submarine/chassis.glb');
 
 // ─── VEHICLE LOAD PROGRESS TRACKER ──────────────────────────────────────────
 // Danh sách file cần tải cho từng loại xe (theo thứ tự ưu tiên, file lớn nhất trước)
@@ -2520,52 +3412,26 @@ const VEHICLE_FILES = {
   rolls_royce: ['/models/car/rolls_royce/chassis.glb', '/models/car/rolls_royce/wheel.glb'],   // 25MB + 2MB
   ship:        ['/models/car/ship/chassis.glb'],                                               // 7MB
   helicopter:  ['/models/car/helicopter/chassis.glb', '/models/car/helicopter/rotor_main.glb', '/models/car/helicopter/rotor_tail.glb'], // 0.4+0.1+0.4MB
+  submarine:   ['/models/car/submarine/chassis.glb'],
+  minisub:     ['/models/car/minisub/chassis.glb'],
+  boat:        ['/models/car/boat/chassis.glb'],
 };
 
-// Hook theo dõi tiến độ tải từng xe
+
+// ?????????????????????????????????????????????????????????????????????????????????
+// ?  useVehicleLoadProgress � STUB (�? V� HI?U H�A FETCH, KH�NG KH�I PH?C)      ?
+// ?  Tr�?c ��y hook n�y fetch l?i to�n b? model qua HTTP m?i khi app load,       ?
+// ?  g�y block UI 40+ gi�y. Gi? n� tr? v? 100 ngay l?p t?c v? t?t c? models     ?
+// ?  �? ��?c preload b?i VehiclePreloader trong loading screen (useGLTF.preload). ?
+// ?  KH�NG ��?C thay �?i h�m n�y th�nh fetch th?t. N?u mu?n track progress,     ?
+// ?  h?y d�ng onProgress callback c?a useGLTF thay v? fetch �?c l?p.             ?
+// ?????????????????????????????????????????????????????????????????????????????????
+// Hook theo doi tien do tai tung xe - Stub version (models da duoc preload qua loading screen)
 function useVehicleLoadProgress() {
-  const [progress, setProgress] = React.useState(() => ({
-    default: 0, alternative: 0, rolls_royce: 0, ship: 0, helicopter: 0,
-  }));
-
-  React.useEffect(() => {
-    const checkCacheAndLoad = async (vehicleKey, urls) => {
-      let totalSize = 0;
-      let loadedSize = 0;
-      const responses = [];
-
-      // Fetch tất cả file của xe này song song
-      const fetches = urls.map(url =>
-        fetch(url).then(async (res) => {
-          if (!res.ok) return;
-          const contentLength = Number(res.headers.get('content-length') || 0);
-          totalSize += contentLength || 1_000_000; // fallback 1MB nếu không có header
-          const reader = res.body.getReader();
-          let receivedLength = 0;
-          while (true) {
-            const { done, value } = await reader.read();
-            if (done) break;
-            receivedLength += value.length;
-            loadedSize += value.length;
-            // Cập nhật tiến độ realtime
-            setProgress(prev => ({
-              ...prev,
-              [vehicleKey]: totalSize > 0 ? Math.min(99, Math.round((loadedSize / totalSize) * 100)) : 50,
-            }));
-          }
-        }).catch(() => {})
-      );
-
-      await Promise.all(fetches);
-      // Đánh dấu hoàn tất
-      setProgress(prev => ({ ...prev, [vehicleKey]: 100 }));
-    };
-
-    // Tải song song tất cả xe (default đã load nên sẽ dùng cache)
-    Object.entries(VEHICLE_FILES).forEach(([key, urls]) => {
-      checkCacheAndLoad(key, urls);
-    });
-  }, []);
-
-  return progress;
+  // Tat fetch lai model vi tat ca da duoc preload qua VehiclePreloader trong loading screen
+  // Ham nay chi con de giu tuong thich voi cac phan con lai cua code
+  return {
+    default: 100, alternative: 100, rolls_royce: 100, ship: 100,
+    helicopter: 100, submarine: 100, minisub: 100, boat: 100,
+  };
 }

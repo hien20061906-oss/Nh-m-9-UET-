@@ -47,10 +47,20 @@ function playCoinSound() {
 function randomPositionAround(origin, minR, maxR) {
   const angle = Math.random() * Math.PI * 2;
   const dist = minR + Math.random() * (maxR - minR);
+
+  let x = origin[0] + Math.cos(angle) * dist;
+  let z = origin[2] + Math.sin(angle) * dist;
+
+  // Giới hạn để xu chỉ spawn trên mặt đảo (đảo: ngang 600m x dọc 950m, tâm Z dịch -75m)
+  // X: [-300, 300], Z: [-550, 400]. Cắt bớt 15m mỗi mép để xu không nằm sát vực
+  x = Math.max(-285, Math.min(285, x));
+  z = Math.max(-535, Math.min(385, z));
+
+  // Luôn khóa Y ở mặt đất (y=0) + độ cao của xu, KHÔNG bay lơ lửng trên trời nữa
   return [
-    origin[0] + Math.cos(angle) * dist,
-    origin[1] + COIN_Y_OFFSET,
-    origin[2] + Math.sin(angle) * dist
+    x,
+    0 + COIN_Y_OFFSET,
+    z
   ];
 }
 
@@ -116,14 +126,14 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
     const car = state.scene.getObjectByName('chassis-body-visual');
     if (!car) return;
 
+    // Lấy vị trí xe chỉ dùng khi check va chạm và respawn
     car.getWorldPosition(carPosRef.current);
     const cp = carPosRef.current;
     const time = state.clock.elapsedTime;
 
-    // Tối ưu: Chỉ chạy logic nặng 2 khung hình 1 lần
-    frameCount.current++;
-    const isUpdateFrame = frameCount.current % 2 === 0;
-    if (!isUpdateFrame) return;
+    // Bỏ giới hạn khung hình để chạy mượt nhất ở 144Hz
+    // if (!isUpdateFrame) return; 
+    
     
     // Khởi tạo
     if (!initialized.current && cp.x !== 0) {
@@ -148,6 +158,7 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
       if (!coin.isAlive) {
         if (time > coin.nextRespawn) {
           coin.isAlive = true;
+          // Xu chỉ xuất hiện trên mặt đảo (đã khóa ở hàm randomPositionAround)
           coin.pos = randomPositionAround([cp.x, cp.y, cp.z], SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX);
           coin.id = `coin-${Date.now()}-${Math.random()}`;
         } else {
@@ -182,12 +193,18 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
       dummy.updateMatrix();
       if (torusRef.current) torusRef.current.setMatrixAt(i, dummy.matrix);
 
-      // Bóng dưới đất
-      dummy.position.set(coin.pos[0], coin.pos[1] - COIN_Y_OFFSET + 0.05, coin.pos[2]);
-      dummy.rotation.set(-Math.PI / 2, 0, 0);
-      dummy.scale.setScalar(1 + yOffset * 0.5);
-      dummy.updateMatrix();
-      if (shadowRef.current) shadowRef.current.setMatrixAt(i, dummy.matrix);
+      // Bóng dưới đất - Chỉ hiện nếu xu gần mặt đất
+      if (coin.pos[1] < 5) {
+        dummy.position.set(coin.pos[0], 0.05, coin.pos[2]);
+        dummy.rotation.set(-Math.PI / 2, 0, 0);
+        dummy.scale.setScalar(1 + yOffset * 0.5);
+        dummy.updateMatrix();
+        if (shadowRef.current) shadowRef.current.setMatrixAt(i, dummy.matrix);
+      } else {
+        dummy.scale.setScalar(0);
+        dummy.updateMatrix();
+        if (shadowRef.current) shadowRef.current.setMatrixAt(i, dummy.matrix);
+      }
 
       // Kiểm tra va chạm
       const dx = coin.pos[0] - cp.x;
@@ -219,20 +236,7 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
     }
   });
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-      const cp = carPosRef.current;
-      coinsRef.current.forEach(coin => {
-        if (!coin.isAlive) return;
-        const dx = coin.pos[0] - cp.x;
-        const dz = coin.pos[2] - cp.z;
-        if (dx * dx + dz * dz > DESPAWN_DIST_SQ) {
-          coin.pos = randomPositionAround([cp.x, cp.y, cp.z], SPAWN_RADIUS_MIN, SPAWN_RADIUS_MAX);
-        }
-      });
-    }, 5000);
-    return () => clearInterval(interval);
-  }, []);
+  // Xu đứng yên, KHÔNG có interval dịch chuyển nữa — chỉ respawn gần xe khi bị thu thập
 
   return (
     <group name="map-coins-instanced">

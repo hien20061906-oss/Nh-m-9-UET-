@@ -338,31 +338,48 @@ export const PoliceChaseUI = () => {
   if (!chaseState.isChasing) return null;
 
   return (
-    <div style={{
-      position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
-      width: '400px', background: 'rgba(0,0,0,0.8)', padding: '15px', borderRadius: '8px',
-      border: `2px solid ${chaseState.isDetected ? '#ff0000' : '#ff8800'}`, zIndex: 10000,
-      color: 'white', fontFamily: 'sans-serif', textAlign: 'center',
-      boxShadow: chaseState.isDetected ? '0 0 20px rgba(255,0,0,0.6)' : '0 0 10px rgba(255,136,0,0.3)',
-      transition: 'border 0.3s, box-shadow 0.3s'
-    }}>
-      <div style={{ fontWeight: 'bold', fontSize: '18px', marginBottom: '10px', letterSpacing: '1px', color: chaseState.isDetected ? '#ff4444' : '#ffaa00' }}>
-        {chaseState.isDetected ? 'CẢNH BÁO! BẠN SẮP BỊ BẮT!' : 'ĐANG TẨU THOÁT...'}
+    <>
+      {/* Hiệu ứng nháy đỏ viền màn hình khi bị UAV đuổi */}
+      <div style={{
+        position: 'fixed', top: 0, left: 0, right: 0, bottom: 0,
+        pointerEvents: 'none', zIndex: 9998,
+        background: 'radial-gradient(circle, transparent 50%, rgba(255, 0, 0, 0.5) 100%)',
+        animation: 'policeFlashFast 0.5s infinite alternate',
+      }} />
+
+      <style>{`
+        @keyframes policeFlashFast {
+          0% { opacity: 0.3; }
+          100% { opacity: 1; }
+        }
+      `}</style>
+
+      <div style={{
+        position: 'fixed', top: '100px', left: '50%', transform: 'translateX(-50%)',
+        width: '400px', background: 'rgba(0,0,0,0.8)', padding: '15px', borderRadius: '8px',
+        border: `2px solid ${chaseState.isDetected ? '#ff0000' : '#ff8800'}`, zIndex: 10000,
+        color: 'white', fontFamily: 'sans-serif', textAlign: 'center',
+        boxShadow: chaseState.isDetected ? '0 0 20px rgba(255,0,0,0.6)' : '0 0 10px rgba(255,136,0,0.3)',
+        transition: 'border 0.3s, box-shadow 0.3s'
+      }}>
+        <div style={{ fontWeight: 'bold', fontSize: '18px', marginBottom: '10px', letterSpacing: '1px', color: chaseState.isDetected ? '#ff4444' : '#ffaa00' }}>
+          {chaseState.isDetected ? 'CẢNH BÁO! BẠN SẮP BỊ BẮT!' : 'ĐANG TẨU THOÁT...'}
+        </div>
+        
+        <div style={{ width: '100%', height: '24px', background: '#333', borderRadius: '12px', overflow: 'hidden', border: '1px solid #555', position: 'relative' }}>
+          <div style={{
+            width: '100%', height: '100%',
+            background: chaseState.isDetected ? 'red' : 'linear-gradient(90deg, #ff8800, #ffaa00)',
+            transform: `scaleX(${chaseState.progress})`,
+            transformOrigin: 'left',
+            transition: 'transform 0.1s linear, background 0.2s ease'
+          }} />
+        </div>
+        
+        <div style={{ fontSize: '12px', marginTop: '8px', color: '#aaa' }}>
+          {chaseState.isDetected ? 'THOÁT KHỎI ĐÈN ĐỎ ĐỂ TRÁNH BỊ PHẠT 360 COIN' : 'GIỮ XE NGOÀI VÙNG ĐÈN ĐỂ CẮT ĐUÔI'}
+        </div>
       </div>
-      
-      <div style={{ width: '100%', height: '24px', background: '#333', borderRadius: '12px', overflow: 'hidden', border: '1px solid #555', position: 'relative' }}>
-        <div style={{
-          width: '100%', height: '100%',
-          background: chaseState.isDetected ? 'red' : 'linear-gradient(90deg, #ff8800, #ffaa00)',
-          transform: `scaleX(${chaseState.progress})`,
-          transformOrigin: 'left',
-          transition: 'transform 0.1s linear, background 0.2s ease'
-        }} />
-      </div>
-      
-      <div style={{ fontSize: '12px', marginTop: '8px', color: '#aaa' }}>
-        {chaseState.isDetected ? 'THOÁT KHỎI ĐÈN ĐỎ ĐỂ TRÁNH BỊ PHẠT 360 COIN' : 'GIỮ XE NGOÀI VÙNG ĐÈN ĐỂ CẮT ĐUÔI'}
-      </div>
-    </div>
+    </>
   );
 };
