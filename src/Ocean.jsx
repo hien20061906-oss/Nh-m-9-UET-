@@ -162,25 +162,25 @@ const Ocean = ({
     depthWrite: false,
   }), [normalMap1, normalMap2]);
 
+  const lastWeatherRef = useRef("");
+
   // Update per-frame uniforms
   useFrame((state) => {
     if (!material) return;
     material.uniforms.uTime.value    = state.clock.elapsedTime;
     material.uniforms.uCameraY.value = state.camera.position.y;
     
-    // Đồng bộ màu sắc biển với bầu trời và thời tiết
-    if (weather) {
+    // Chỉ cập nhật các uniform thời tiết khi preset thay đổi để tiết kiệm hiệu năng
+    if (weather && lastWeatherRef.current !== weather.label) {
+      lastWeatherRef.current = weather.label;
+      
       material.uniforms.uSkyTop.value.set(weather.skyTop);
       material.uniforms.uSkyHorizon.value.set(weather.skyBottom);
       
-      // Chỉnh màu nền biển dựa trên bầu trời (nhưng đậm hơn)
-      // Giảm tỷ lệ xuống 0.35 để biển đêm sâu và thẫm hơn, không bị "xanh lè" khi nhìn gần
       const baseMult = weather.label.includes('Đêm') ? 0.35 : 0.15; 
       material.uniforms.uWaterBase.value.copy(material.uniforms.uSkyHorizon.value).multiplyScalar(baseMult);
 
-      // Chỉnh hướng mặt trời/mặt trăng
       if (weather.label.includes('Đêm')) {
-        // Mặt trăng cao hơn một chút để tạo điểm lấp lánh sắc nét hơn
         material.uniforms.uSunDir.value.set(-0.5, 0.4, -0.5).normalize();
       } else {
         material.uniforms.uSunDir.value.set(0.6, 0.8, 0.2).normalize();

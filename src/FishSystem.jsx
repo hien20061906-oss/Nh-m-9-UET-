@@ -1,91 +1,114 @@
-import React, { useRef, useMemo, useEffect, useState } from 'react';
+import React, { useRef, useMemo, useEffect } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { useGLTF, useAnimations } from '@react-three/drei';
 import * as THREE from 'three';
 import { SkeletonUtils } from 'three-stdlib';
 
+// Vị trí ngọn hải đăng
+const LIGHTHOUSE = { x: -500, z: 50 };
+const REEF_RADIUS = 200; // Bán kính khu vực cá sinh sống
+
+// Giới hạn độ sâu
+const Y_MIN = -55; // Không xuyên đáy biển (-60m)
+const Y_MAX = -14;  // Đủ sâu để không nổi lên mặt nước dù có bobbing ±1.5m
+
+// Sinh vị trí random trong vòng tròn quanh hải đăng
+function randomInCircle(cx, cz, radius) {
+  const angle = Math.random() * Math.PI * 2;
+  const r = Math.sqrt(Math.random()) * radius; // sqrt để phân bố đều hơn
+  return [cx + Math.cos(angle) * r, cz + Math.sin(angle) * r];
+}
+
 const Fish = ({ initialData, modelPath }) => {
   const { scene, animations } = useGLTF(modelPath);
-  
-  // Clone an toàn cho mô hình có hoặc không có xương
   const clone = useMemo(() => SkeletonUtils.clone(scene), [scene]);
   const group = useRef();
-  // Đảm bảo animations luôn là mảng để tránh crash React khi đổi xe/remount
   const { actions } = useAnimations(animations || [], group);
-
-  // Lưu trữ dữ liệu di chuyển
   const data = useRef({ ...initialData, hasAnimation: false });
 
+  const actionRef = useRef(null);
+  const isPausedRef = useRef(false);
+
   useEffect(() => {
-    // Nếu mô hình CÓ animation, tự động phát
     if (actions && Object.keys(actions).length > 0) {
       const firstAction = Object.keys(actions)[0];
-      actions[firstAction].reset().play();
-      actions[firstAction].timeScale = data.current.speed * 1.5;
+      actionRef.current = actions[firstAction];
+      actionRef.current.reset().play();
+      actionRef.current.timeScale = data.current.speed * 1.5;
       data.current.hasAnimation = true;
-    } else {
-      data.current.hasAnimation = false;
     }
   }, [actions]);
 
   useFrame((state) => {
     if (!group.current) return;
-    const time = state.clock.elapsedTime;
     
-    // Thay vì tìm tên xe cụ thể (dễ bị lỗi khi đổi xe), ta dùng luôn vị trí Camera!
-    // Camera luôn luôn bám theo người chơi dù họ đang đi xe gì.
-    let playerPos = new THREE.Vector3();
-    playerPos.copy(state.camera.position);
-    playerPos.y = -10; // Đưa điểm mục tiêu xuống dưới mặt nước
+    // TỐI ƯU: Chỉ tính khoảng cách bình phương (nhanh hơn) và chỉ update animation state khi thay đổi
+    const distSq = group.current.position.distanceToSquared(state.camera.position);
+    const shouldPause = distSq > 40000; // 200m * 200m
 
-    // Cá bơi tiến (hoặc lùi, tùy thuộc vào hệ trục Z của model)
-    group.current.translateZ(data.current.speed * 0.5);
-
-    // Cá lượn lờ trái phải ngẫu nhiên
-    data.current.rotationY += Math.sin(time * 0.5 + data.current.id) * 0.005;
-
-    // NẾU CÁ KHÔNG CÓ ANIMATION: Tạo hiệu ứng quẫy mình (lắc lư) giả lập
-    let wobble = 0;
-    if (!data.current.hasAnimation) {
-      // Tốc độ lắc tỉ lệ thuận với tốc độ bơi
-      wobble = Math.sin(time * 10 * data.current.speed + data.current.id) * 0.15;
+    if (shouldPause) {
+      if (!isPausedRef.current) {
+        if (actionRef.current) actionRef.current.paused = true;
+        isPausedRef.current = true;
+      }
+      return; 
+    } else {
+      if (isPausedRef.current) {
+        if (actionRef.current) actionRef.current.paused = false;
+        isPausedRef.current = false;
+      }
     }
 
-    // Kết hợp góc quay hướng đi và góc lắc quẫy thân
-    group.current.rotation.y = data.current.rotationY + wobble;
+    const time = state.clock.elapsedTime;
+    const d = data.current;
 
-    // Lắc lư lên xuống (nhô lên hụp xuống) dựa trên baseY cố định (tránh lỗi cá bay lên trời)
-    group.current.position.y = data.current.baseY + Math.sin(time * 2 + data.current.id) * 0.5;
+    // Bơi tiến theo hướng hiện tại
+    group.current.translateZ(d.speed * 0.5);
 
-    // Giới hạn khu vực bơi quanh người chơi
-    const distSq = group.current.position.distanceToSquared(playerPos);
-    
-    // 1. Nếu cá quá xa (>150m), dịch chuyển tức thời về gần người chơi
-    if (distSq > 22500) { 
-      const angle = Math.random() * Math.PI * 2;
-      const radius = 30 + Math.random() * 20;
-      group.current.position.x = playerPos.x + Math.cos(angle) * radius;
-      group.current.position.z = playerPos.z + Math.sin(angle) * radius;
-    } 
-    // 2. Nếu cá hơi xa (>60m), bẻ lái bơi vòng lại mượt mà
-    else if (distSq > 3600) { 
-      const dx = playerPos.x - group.current.position.x;
-      const dz = playerPos.z - group.current.position.z;
-      const targetAngle = Math.atan2(dx, dz);
-      
-      let diff = targetAngle - data.current.rotationY;
+    // Lắc lư thân cá tự nhiên
+    if (!d.hasAnimation) {
+      const wobble = Math.sin(time * 8 * d.speed + d.id) * 0.12;
+      group.current.rotation.y = d.rotationY + wobble;
+    } else {
+      group.current.rotation.y = d.rotationY;
+    }
+
+    // Nhấp nhô lên xuống nhẹ nhàng
+    const pos = group.current.position;
+    const bobY = d.baseY + Math.sin(time * 1.5 + d.id) * 1.5;
+    pos.y = THREE.MathUtils.lerp(pos.y, bobY, 0.02);
+
+    // === Clamp đáy biển và mặt nước ===
+    if (pos.y < Y_MIN) { pos.y = Y_MIN; d.baseY = Y_MIN + 3; }
+    if (pos.y > Y_MAX) { pos.y = Y_MAX; d.baseY = Y_MAX - 3; }
+    // Hard clamp tuyệt đối: không cho cá nào vượt quá -10m dù bất kỳ lý do gì
+    pos.y = Math.min(pos.y, -10);
+
+    // === Xoay đầu khi ra ngoài bán kính hải đăng ===
+    const dx = pos.x - LIGHTHOUSE.x;
+    const dz = pos.z - LIGHTHOUSE.z;
+    const distFromCenter = Math.sqrt(dx * dx + dz * dz);
+    if (distFromCenter > REEF_RADIUS) {
+      // Tính góc quay về trung tâm rồi xoay dần dần
+      const angleToCenter = Math.atan2(-dx, -dz);
+      let diff = angleToCenter - d.rotationY;
       while (diff > Math.PI) diff -= Math.PI * 2;
       while (diff < -Math.PI) diff += Math.PI * 2;
-      
-      data.current.rotationY += diff * 0.05;
+      d.rotationY += diff * 0.04; // Xoay mượt mà về trung tâm
     }
+
+    // Lượn lờ ngẫu nhiên tự nhiên
+    d.rotationY += Math.sin(time * 0.3 + d.id * 7.3) * 0.003;
+
+    // Cập nhật rotation
+    group.current.rotation.y = d.rotationY;
   });
 
   return (
-    <group 
-      ref={group} 
-      position={initialData.position} 
-      rotation={[0, initialData.rotationY, 0]} 
+    <group
+      ref={group}
+      position={initialData.position}
+      rotation={[0, initialData.rotationY, 0]}
       scale={initialData.scale}
     >
       <group rotation={initialData.rotationOffset || [0, 0, 0]}>
@@ -96,18 +119,21 @@ const Fish = ({ initialData, modelPath }) => {
 };
 
 export const FishSwarm = ({ modelPath, count = 5, baseScale = 3, rotationOffset = [0, 0, 0] }) => {
-  // Tạo data ngẫu nhiên cho đàn cá
   const fishesData = useMemo(() => {
-    return Array.from({ length: count }).map((_, i) => ({
-      id: i,
-      position: [0, 0, 0],
-      baseY: -10 - Math.random() * 15, // Cố định độ sâu cho mỗi con cá (từ -10m đến -25m)
+    return Array.from({ length: count }).map((_, i) => {
+      const [spawnX, spawnZ] = randomInCircle(LIGHTHOUSE.x, LIGHTHOUSE.z, REEF_RADIUS);
+      const spawnY = Y_MIN + Math.random() * (Y_MAX - Y_MIN);
+      return {
+        id: i,
+        position: [spawnX, spawnY, spawnZ],
+        baseY: spawnY,
       rotationY: Math.random() * Math.PI * 2,
-      rotationOffset: rotationOffset,
-      speed: 0.2 + Math.random() * 0.4,
-      scale: baseScale + Math.random() * baseScale 
-    }));
-  }, [count, baseScale]);
+        rotationOffset,
+        speed: 0.15 + Math.random() * 0.3,
+        scale: baseScale + Math.random() * baseScale * 0.5,
+      };
+    });
+  }, [count, baseScale, rotationOffset]);
 
   return (
     <>

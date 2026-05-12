@@ -11,7 +11,7 @@ export function emitSpeedViolation(speed) {
 }
 
 // ─── UAV CHASE LOGIC ─────────────────────────────────────────────────────────
-export const ChasingUAV = ({ initialPosition = [0, 10, -50], debug = false }) => {
+export const ChasingUAV = ({ initialPosition = [0, 10, -50], debug = false, modelScale = 20 }) => {
   const { scene } = useGLTF('/models/uav/uav.glb');
   const uavModel = useMemo(() => scene.clone(), [scene]);
   const uavGroupRef = useRef();
@@ -171,7 +171,7 @@ export const ChasingUAV = ({ initialPosition = [0, 10, -50], debug = false }) =>
   return (
     <group ref={uavGroupRef} position={initialPosition} visible={false}>
       <group rotation={[0, -Math.PI / 2, 0]}> 
-        <primitive object={uavModel} scale={20} />
+        <primitive object={uavModel} scale={modelScale} />
       </group>
       <mesh geometry={coneGeo} material={coneMat} ref={detectionConeRef} />
     </group>
@@ -186,6 +186,7 @@ export const SpeedTrap = ({ position = [0, 1, -50], rotation = [0, 0, 0], scale 
   const currentSpeed = useRef(0);
   const lastViolatedTime = useRef(0);
   const [isFlashing, setIsFlashing] = useState(false);
+  const carPos = useMemo(() => new THREE.Vector3(), []);
 
   // 1. Lắng nghe vận tốc xe
   useEffect(() => {
@@ -222,7 +223,6 @@ export const SpeedTrap = ({ position = [0, 1, -50], rotation = [0, 0, 0], scale 
     // Chống spam (chỉ kiểm tra/phạt 1 lần mỗi 5 giây cho mỗi lần đi qua)
     if (now - lastViolatedTime.current < 5000) return;
 
-    const carPos = new THREE.Vector3();
     carCache.current.getWorldPosition(carPos);
 
     if (boxRef.current.containsPoint(carPos)) {

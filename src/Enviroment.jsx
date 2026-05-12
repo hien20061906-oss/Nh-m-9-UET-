@@ -33,7 +33,7 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 20000,
+    rainCount: 8000,
     rainLength: 0.8,
     rainSpread: 1500,
     snowCount: 0,
@@ -55,7 +55,7 @@ const WEATHER_PRESETS = {
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 1500,
-    snowCount: 20000,
+    snowCount: 5000,
     snowSize: 0.4,
     snowOpacity: 0.9,
     lightningCount: 0,
@@ -89,7 +89,6 @@ const WEATHER_PRESETS = {
     fogFar: 300,
     ambientIntensity: 0.6, // Tăng ambient để vật thể rõ hơn
     ambientColor: '#1a2a4a',
-    sunIntensity: 1.5,
     sunColor: '#88bbff', 
     rainCount: 0,
     rainLength: 0.5,
@@ -151,10 +150,10 @@ function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 
       pos[idx + 1] -= dy;
       pos[idx + 4] -= dy;
 
-      // Wrap Y - Tăng độ cao khởi tạo lên 60 để bao phủ tốt hơn khi cam ở trên cao
+      // Wrap Y - Dùng modulo hoặc giá trị cố định thay vì random() mỗi frame
       if (pos[idx + 1] < -10) {
-        pos[idx + 1] = 60 + Math.random() * 10;
-        pos[idx + 4] = pos[idx + 1] - rainLength;
+        pos[idx + 1] = 65; 
+        pos[idx + 4] = 65 - rainLength;
       }
 
       // Wrap X
@@ -175,6 +174,7 @@ function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 
         pos[idx + 5] += rainSpread;
       }
     }
+    mesh.current.geometry.attributes.position.updateRange = { offset: 0, count: count * 6 };
     mesh.current.geometry.attributes.position.needsUpdate = true;
     mesh.current.geometry.setDrawRange(0, count * 2);
   });
@@ -241,9 +241,9 @@ function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 1
       // Tối ưu: Chỉ tính Sin một lần cho hiệu ứng đung đưa nhẹ
       pos[idx] += (drift[i] * dt) + Math.sin(t + i) * 0.01;
 
-      // Wrap Y - Tăng độ cao để phủ kín tầm nhìn khi cam ở trên cao
+      // Wrap Y 
       if (pos[idx + 1] < -5) {
-        pos[idx + 1] = 60 + Math.random() * 10;
+        pos[idx + 1] = 60;
       }
 
       // Wrap X
@@ -254,6 +254,7 @@ function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 1
       if (pos[idx + 2] - camZ > halfSpread) pos[idx + 2] -= snowSpread;
       else if (pos[idx + 2] - camZ < -halfSpread) pos[idx + 2] += snowSpread;
     }
+    mesh.current.geometry.attributes.position.updateRange = { offset: 0, count: count * 3 };
     mesh.current.geometry.attributes.position.needsUpdate = true;
     mesh.current.geometry.setDrawRange(0, count);
   });
@@ -282,22 +283,25 @@ function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 1
 
 // ─── LIGHTNING EFFECT ─────────────────────────────────────────────────────────
 const MAX_LIGHTNING = 3000;
+const MAX_BOLT_SEGMENTS = 20; // max segments per bolt
 
-// Sinh hình dạng tia sét zigzag mới
-function generateBoltPoints() {
-  const points = [];
+// Điền dữ liệu tia sét vào Float32Array có sẵn — không tạo object mới
+function fillBoltPositions(arr) {
   const segments = 10 + Math.floor(Math.random() * 8);
   const height = 35 + Math.random() * 25;
   let x = 0, z = 0;
-  for (let s = 0; s <= segments; s++) {
+  let count = 0;
+  for (let s = 0; s <= segments && s < MAX_BOLT_SEGMENTS; s++) {
     const t = s / segments;
     const jitter = s > 0 && s < segments ? (Math.random() - 0.5) * 8 : 0;
     const jitterZ = s > 0 && s < segments ? (Math.random() - 0.5) * 5 : 0;
-    x += jitter;
-    z += jitterZ;
-    points.push(new THREE.Vector3(x, height * (1 - t), z));
+    x += jitter; z += jitterZ;
+    arr[s * 3] = x;
+    arr[s * 3 + 1] = height * (1 - t);
+    arr[s * 3 + 2] = z;
+    count = s + 1;
   }
-  return points;
+  return count;
 }
 
 function Lightning({ count = 0, spread = 600 }) {
@@ -319,9 +323,17 @@ function Lightning({ count = 0, spread = 600 }) {
 
     const clampedCount = Math.min(count, MAX_LIGHTNING);
     for (let i = 0; i < clampedCount; i++) {
-      const geo = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+      // Pre-allocate float array — tái sử dụng mãi mãi, không bao giờ dispose
+      const posArr = new Float32Array(MAX_BOLT_SEGMENTS * 3);
+      const segCount = fillBoltPositions(posArr);
+      const geo = new THREE.BufferGeometry();
+      const attr = new THREE.BufferAttribute(posArr, 3);
+      attr.setUsage(THREE.DynamicDrawUsage);
+      geo.setAttribute('position', attr);
+      geo.setDrawRange(0, segCount);
+
       const mat = new THREE.LineBasicMaterial({
-        color: '#ffffff',        // trắng lóa như sét thật
+        color: '#ffffff',
         transparent: true,
         opacity: 0,
         depthWrite: false,
@@ -331,13 +343,13 @@ function Lightning({ count = 0, spread = 600 }) {
       groupRef.current.add(line);
       boltsRef.current.push({
         line,
+        posArr,
         phase: 'idle',
         flashTimer: 0,
-        doubleFlash: false,     // double-flash như sét thật
-        // mỗi bolt có cooldown hoàn toàn ngẫu nhiên 0.5s – 8s
+        doubleFlash: false,
         cooldown: 0.5 + Math.random() * 7.5,
       });
-      timersRef.current.push(Math.random() * 6); // stagger khởi đầu
+      timersRef.current.push(Math.random() * 6);
     }
   }, [count, spread]);
 
@@ -352,30 +364,28 @@ function Lightning({ count = 0, spread = 600 }) {
 
       if (bolt.phase === 'idle') {
         if (timersRef.current[i] <= 0) {
-          // Vị trí ngẫu nhiên quanh camera
           const rx = camX + (Math.random() - 0.5) * Math.min(half, 300);
           const rz = camZ + (Math.random() - 0.5) * Math.min(half, 300);
-          // Tái sinh hình dạng tia sét mới mỗi lần đánh
-          bolt.line.geometry.dispose();
-          bolt.line.geometry = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+          // Cập nhật geometry IN-PLACE — không dispose/tạo mới
+          const segCount = fillBoltPositions(bolt.posArr);
+          bolt.line.geometry.attributes.position.needsUpdate = true;
+          bolt.line.geometry.setDrawRange(0, segCount);
           bolt.line.position.set(rx, 0, rz);
           bolt.line.visible = true;
           bolt.line.material.opacity = 1.0;
-          bolt.phase = 'flash1';                          // flash lần 1
+          bolt.phase = 'flash1';
           bolt.flashTimer = 0.04 + Math.random() * 0.06;
-          bolt.doubleFlash = Math.random() < 0.6;         // 60% có double-flash
+          bolt.doubleFlash = Math.random() < 0.6;
         }
       } else if (bolt.phase === 'flash1') {
-        // Nhấp nháy cực nhanh – giả lập discharge
         bolt.line.material.opacity = 0.85 + Math.sin(Date.now() * 0.08) * 0.15;
         bolt.flashTimer -= delta;
         if (bolt.flashTimer <= 0) {
           if (bolt.doubleFlash) {
-            // Tắt nhanh rồi flash lại
             bolt.line.material.opacity = 0;
             bolt.line.visible = false;
             bolt.phase = 'gap';
-            bolt.flashTimer = 0.03 + Math.random() * 0.04; // khoảng tối ngắn
+            bolt.flashTimer = 0.03 + Math.random() * 0.04;
           } else {
             bolt.phase = 'fade';
           }
@@ -383,9 +393,10 @@ function Lightning({ count = 0, spread = 600 }) {
       } else if (bolt.phase === 'gap') {
         bolt.flashTimer -= delta;
         if (bolt.flashTimer <= 0) {
-          // Flash lần 2: sáng lại
-          bolt.line.geometry.dispose();
-          bolt.line.geometry = new THREE.BufferGeometry().setFromPoints(generateBoltPoints());
+          // Flash lần 2: cập nhật IN-PLACE
+          const segCount = fillBoltPositions(bolt.posArr);
+          bolt.line.geometry.attributes.position.needsUpdate = true;
+          bolt.line.geometry.setDrawRange(0, segCount);
           bolt.line.visible = true;
           bolt.line.material.opacity = 1.0;
           bolt.phase = 'flash2';
@@ -398,12 +409,11 @@ function Lightning({ count = 0, spread = 600 }) {
           bolt.phase = 'fade';
         }
       } else if (bolt.phase === 'fade') {
-        bolt.line.material.opacity -= delta * 10; // tắt nhanh
+        bolt.line.material.opacity -= delta * 10;
         if (bolt.line.material.opacity <= 0) {
           bolt.line.material.opacity = 0;
           bolt.line.visible = false;
           bolt.phase = 'idle';
-          // Cooldown hoàn toàn ngẫu nhiên cho lần tiếp
           timersRef.current[i] = 0.5 + Math.random() * 7.5;
         }
       }
@@ -419,7 +429,6 @@ function SceneUpdater({ weather }) {
   const fogRef = useRef(null);
   const ambientRef = useRef(null);
   const dirRef1 = useRef(null);
-  const dirRef2 = useRef(null);
 
   useEffect(() => {
     // Sử dụng FogExp2 để sương mù trông dày đặc và bao phủ tốt hơn (atmospheric)
@@ -428,6 +437,8 @@ function SceneUpdater({ weather }) {
     fogRef.current = fog;
     return () => { scene.fog = null; };
   }, [scene]);
+
+  const tempColor = useMemo(() => new THREE.Color(), []);
 
   useFrame((state) => {
     // Nếu trên mặt nước, đảm bảo scene.fog luôn là object của hệ thống thời tiết
@@ -439,10 +450,10 @@ function SceneUpdater({ weather }) {
 
     if (fogRef.current && state.scene.fog === fogRef.current) {
       const fog = fogRef.current;
-      const targetColor = new THREE.Color(weather.fogColor);
+      tempColor.set(weather.fogColor);
       
       // Cập nhật màu sắc sương mù
-      fog.color.lerp(targetColor, 0.05);
+      fog.color.lerp(tempColor, 0.05);
 
       // Nếu là FogExp2 thì cập nhật density, nếu là Fog thường thì cập nhật near/far
       if (fog.isFogExp2) {
@@ -455,15 +466,13 @@ function SceneUpdater({ weather }) {
     }
     if (ambientRef.current) {
       ambientRef.current.intensity = lerpVal(ambientRef.current.intensity, weather.ambientIntensity, 0.05);
-      ambientRef.current.color.lerp(new THREE.Color(weather.ambientColor), 0.05);
+      tempColor.set(weather.ambientColor);
+      ambientRef.current.color.lerp(tempColor, 0.05);
     }
     if (dirRef1.current) {
       dirRef1.current.intensity = lerpVal(dirRef1.current.intensity, weather.sunIntensity, 0.05);
-      dirRef1.current.color.lerp(new THREE.Color(weather.sunColor), 0.05);
-    }
-    if (dirRef2.current) {
-      dirRef2.current.intensity = lerpVal(dirRef2.current.intensity, weather.sunIntensity * 0.3, 0.05);
-      dirRef2.current.color.lerp(new THREE.Color(weather.sunColor), 0.05);
+      tempColor.set(weather.sunColor);
+      dirRef1.current.color.lerp(tempColor, 0.05);
     }
   });
 
@@ -471,7 +480,6 @@ function SceneUpdater({ weather }) {
     <>
       <ambientLight ref={ambientRef} intensity={weather.ambientIntensity} color={weather.ambientColor} />
       <directionalLight ref={dirRef1} position={[10, 20, 10]} intensity={weather.sunIntensity} color={weather.sunColor} />
-      <directionalLight ref={dirRef2} position={[-10, 10, -10]} intensity={weather.sunIntensity * 0.3} color={weather.sunColor} />
     </>
   );
 }

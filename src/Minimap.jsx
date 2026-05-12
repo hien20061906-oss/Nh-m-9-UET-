@@ -26,8 +26,8 @@ export const TELEPORT_LOCATIONS = [
  */
 export const MinimapPlayerTracker = () => {
   const lastUpdate = useRef(0);
-
   const carCache = useRef(null);
+  const _minimapPos = useRef(new THREE.Vector3());
 
   useFrame((state) => {
     const now = performance.now();
@@ -41,7 +41,8 @@ export const MinimapPlayerTracker = () => {
     const car = carCache.current;
     if (!car) return;
 
-    const pos = new THREE.Vector3().setFromMatrixPosition(car.matrixWorld);
+    _minimapPos.current.setFromMatrixPosition(car.matrixWorld);
+    const pos = _minimapPos.current;
 
     window.dispatchEvent(new CustomEvent('minimap-player-update', {
       detail: {

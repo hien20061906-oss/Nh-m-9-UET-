@@ -34,7 +34,6 @@ const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2], debug }) =
 
     // Bán kính nhận diện Checkpoint lớn (40m) để đảm bảo không bị trượt
     if (dist < 40 && isTarget) {
-      console.log(`Đã qua Checkpoint ${index + 1}!`);
       onCheckpointReached(index);
     }
   });
@@ -169,7 +168,6 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos, debug }) => 
     if (!hasLeftStart.current) {
       if (dist > 20) {
         hasLeftStart.current = true;
-        console.log("Đã rời khỏi vạch xuất phát, bắt đầu tính vòng đua!");
       }
       return;
     }
@@ -177,7 +175,6 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos, debug }) => 
     // 2. Logic "Về đích": Phải quay lại vạch (dist < radius) VÀ phải qua đủ checkpoint
     if (dist < radius) {
       if (isAllCheckpointsReached) {
-        console.log(`🏁 FINISH! Hoàn thành vòng đua!`);
         finishRace();
       }
     }

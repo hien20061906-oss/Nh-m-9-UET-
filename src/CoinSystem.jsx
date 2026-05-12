@@ -123,20 +123,28 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
   const dummy = useMemo(() => new THREE.Object3D(), []);
 
   const frameCount = useRef(0);
+  const carCache = useRef(null); // Cache xe để không scan scene mỗi frame
 
   useFrame((state) => {
-    const car = state.scene.getObjectByName('chassis-body-visual');
+    // Tìm xe 1 lần rồi cache lại — tránh getObjectByName mỗi frame
+    if (!carCache.current || !carCache.current.parent) {
+      carCache.current = state.scene.getObjectByName('chassis-body-visual');
+    }
+    const car = carCache.current;
     if (!car) return;
 
-    // Lấy vị trí xe chỉ dùng khi check va chạm và respawn
+    // Throttle: xu chỉ cần update 30fps — bỏ qua frame lẻ
+    frameCount.current++;
+    const isUpdateFrame = (frameCount.current % 2 === 0);
+
+    // Lấy vị trí xe
     car.getWorldPosition(carPosRef.current);
     const cp = carPosRef.current;
     const time = state.clock.elapsedTime;
 
-    // Bỏ giới hạn khung hình để chạy mượt nhất ở 144Hz
-    // if (!isUpdateFrame) return; 
-    
-    
+    // Bỏ qua frame lẻ — xu animation 30fps là đủ mượt
+    if (!isUpdateFrame) return;
+
     // Khởi tạo
     if (!initialized.current && cp.x !== 0) {
       initialized.current = true;

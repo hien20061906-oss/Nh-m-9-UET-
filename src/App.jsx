@@ -3,7 +3,7 @@ import React, { useState, useEffect, useRef, useMemo, useCallback, Suspense, use
 import { Canvas, useFrame, useThree } from '@react-three/fiber';
 import { Physics, Debug, useBox, usePlane, useRaycastVehicle, useCylinder, useCompoundBody, useSphere, useTrimesh, useConvexPolyhedron } from '@react-three/cannon';
 import * as THREE from 'three';
-import { useGLTF, useAnimations, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload, Stats } from '@react-three/drei';
+import { useGLTF, useAnimations, useKeyboardControls, PerspectiveCamera, Html, Stars, Sky, Cloud, Float, Text, Center, Clone, Preload, Stats, Bvh, AdaptiveEvents } from '@react-three/drei';
 import { threeToCannon, ShapeType } from 'three-to-cannon';
 import Environment, { WeatherPanel, WEATHER_PRESETS } from './Enviroment';
 import RaceManager, { RaceContext, RACE_STATES, RaceTicker } from './RaceManager';
@@ -17,12 +17,16 @@ import Ocean from './Ocean';
 import UnderwaterEffect from './UnderwaterEffect';
 import { FishSwarm } from './FishSystem';
 import { WaterVehicleStation } from './WaterVehicleStation';
+import UnderwaterCity from './UnderwaterCity';
+import FishSchool from './FishSchool';
 import RaceUI from './RaceUI';
 import LoginScreen from './LoginScreen';
 import { MapCoins, CoinParticles3D, CoinCollectUI } from './CoinSystem';
 import { doc, updateDoc } from 'firebase/firestore';
 import { auth, db } from './firebase';
 import FishingMinigame from './FishingMinigame';
+import CookieOven from './CookieOven';
+import { FireworksLauncher } from './Fireworks';
 
 import { playSound, playRandomSound, startLoop, stopLoop, fadeVolume, BackgroundMusic, WeatherAudio, MasterMuteButton, setGlobalMuted } from './SoundManager';
 // ─── LOADING SCREEN ──────────────────────────────────────────────────────────
@@ -198,6 +202,11 @@ const VehiclePreloader = ({ onDone }) => {
   return null;
 };
 
+// ─── POOLED EVENT DISPATCH ────────────────────────────────────────────────────
+function dispatchVehicleSpeed(kmh) {
+  window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: kmh }));
+}
+
 // ─── CONTROLS ────────────────────────────────────────────────────────────────
 function usePlayerControls() {
   const keys = useRef({
@@ -351,6 +360,12 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     audio.volume = 0.5;
     return audio;
   }, []);
+
+  // Pool vectors để tránh GC trong frame loop
+  const _carPos = useMemo(() => new THREE.Vector3(), []);
+  const _carOffset = useMemo(() => new THREE.Vector3(), []);
+  const _carLookAt = useMemo(() => new THREE.Vector3(), []);
+  const _carEuler = useMemo(() => new THREE.Euler(), []);
 
   // ─── ENGINE SOUND ─────────────────────────────────────────────────────
   const engineAudio = useRef(null);
@@ -611,7 +626,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
 
     const speed = Math.sqrt(velocity.current[0] ** 2 + velocity.current[2] ** 2);
     // Tính km/h và gửi event cho SpeedometerUI
-    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(speed * 3.6) }));
+    dispatchVehicleSpeed(Math.round(speed * 3.6));
 
     const baseForce = boost ? 1500 : 800;
     // Tỉ lệ lực động cơ theo khối lượng để xe nặng (Rolls Royce) vẫn chạy nhanh
@@ -741,7 +756,7 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     // ─── CAMERA ──────────────────────────────────────────────────────────
     if (!chassisRef.current) return;
 
-    const currentPosition = new THREE.Vector3();
+    const currentPosition = _carPos;
     chassisRef.current.getWorldPosition(currentPosition);
     const rawRot = chassisRef.current.rotation.y;
 
@@ -766,14 +781,14 @@ const Car = ({ folder, lastPos, lastRot, controls, weather }) => {
     const offsetY = Math.sin(ay) * dist;
     const offsetZ = Math.cos(ax) * horizontalDist;
 
-    const idealOffset = new THREE.Vector3(offsetX, offsetY, offsetZ);
-    idealOffset.applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+    _carEuler.set(0, smoothRot.current, 0);
+    const idealOffset = _carOffset.set(offsetX, offsetY, offsetZ).applyEuler(_carEuler);
 
     // Khóa cứng Camera (copy) để triệt tiêu hiện tượng nhòe/bóng ma khi chạy nhanh
     camera.position.copy(currentPosition).add(idealOffset);
 
-    const lookAtPos = currentPosition.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0)));
-    camera.lookAt(lookAtPos);
+    _carLookAt.set(0, 0, -2).applyEuler(_carEuler).add(currentPosition);
+    camera.lookAt(_carLookAt);
 
     // Lưu vị trí và góc xoay cuối cho Minimap, Achievement và chuyển đổi xe
     lastPos.current = [currentPosition.x, currentPosition.y, currentPosition.z];
@@ -882,6 +897,13 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
   const k = usePlayerControls();
   const carLightRef = useRef();
 
+  // Pool vectors để tránh GC trong frame loop
+  const _heliPos = useMemo(() => new THREE.Vector3(), []);
+  const _heliOffset = useMemo(() => new THREE.Vector3(), []);
+  const _heliLookAt = useMemo(() => new THREE.Vector3(), []);
+  const _heliEuler = useMemo(() => new THREE.Euler(), []);
+  const _heliTargetVel = useMemo(() => new THREE.Vector3(), []);
+
   // ─── HELICOPTER ROTOR SOUND ───────────────────────────────────────────
   const rotorAudio = useRef(null);
   useEffect(() => {
@@ -979,40 +1001,39 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
     if (controls.right) localState.current.rot -= YAW_SPEED * delta;
 
     // 2. Tính toán vận tốc mục tiêu
-    const targetVel = new THREE.Vector3();
+    _heliTargetVel.set(0, 0, 0);
     if (controls.forward) {
-      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+      _heliTargetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      _heliTargetVel.x = -Math.sin(localState.current.rot) * SPEED;
     } else if (controls.backward) {
-      targetVel.z = Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+      _heliTargetVel.z = Math.cos(localState.current.rot) * SPEED;
+      _heliTargetVel.x = Math.sin(localState.current.rot) * SPEED;
     }
 
-    if (controls.up) targetVel.y = VERT_SPEED;
-    else if (controls.down) targetVel.y = -VERT_SPEED;
+    if (controls.up) _heliTargetVel.y = VERT_SPEED;
+    else if (controls.down) _heliTargetVel.y = -VERT_SPEED;
 
     // 3. Làm mượt vận tốc (Lerp)
-    localState.current.vel.lerp(targetVel, 0.1);
+    localState.current.vel.lerp(_heliTargetVel, 0.1);
 
     // 4. Đẩy vận tốc vào vật lý (Để nó tự dừng khi đụng tường)
     api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
     
     // Tính km/h và gửi event cho SpeedometerUI
     const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
-    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+    dispatchVehicleSpeed(Math.round(currentSpeed * 3.6));
 
     api.angularVelocity.set(0, 0, 0); // Chống xoay bậy bạ
     api.rotation.set(0, localState.current.rot, 0);
 
     // 5. Lấy vị trí thực tế từ Physics (Hồn) để đồng bộ vào Xác (Visual)
-    const currentPos = new THREE.Vector3();
-    physicsRef.current.getWorldPosition(currentPos);
+    physicsRef.current.getWorldPosition(_heliPos);
 
-    visualRef.current.position.copy(currentPos);
+    visualRef.current.position.copy(_heliPos);
     visualRef.current.rotation.y = localState.current.rot;
 
     // Lưu vị trí cuối cho hệ thống chuyển đổi xe
-    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastPos.current = [_heliPos.x, _heliPos.y, _heliPos.z];
     lastRot.current = [0, localState.current.rot, 0];
 
     // Phát event để App lưu vị trí trước khi đổi xe (throttle 500ms)
@@ -1031,10 +1052,12 @@ const Helicopter = ({ lastPos, lastRot, weather }) => {
 
     const dist = camAngle.current.dist;
     const hDist = Math.cos(camAngle.current.y) * dist;
-    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+    _heliEuler.set(0, smoothRot.current, 0);
+    const offset = _heliOffset.set(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(_heliEuler);
 
-    state.camera.position.copy(currentPos).add(offset);
-    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+    state.camera.position.copy(_heliPos).add(offset);
+    _heliLookAt.set(0, 0, -2).applyEuler(_heliEuler).add(_heliPos);
+    state.camera.lookAt(_heliLookAt);
   });
 
   return (
@@ -1075,6 +1098,13 @@ const Submarine = ({ lastPos, lastRot, weather }) => {
   const smoothRot = useRef(0);
   const k = usePlayerControls();
   const carLightRef = useRef();
+
+  // Pool vectors để tránh GC trong frame loop
+  const _subPos = useMemo(() => new THREE.Vector3(), []);
+  const _subOffset = useMemo(() => new THREE.Vector3(), []);
+  const _subLookAt = useMemo(() => new THREE.Vector3(), []);
+  const _subEuler = useMemo(() => new THREE.Euler(), []);
+  const _subTargetVel = useMemo(() => new THREE.Vector3(), []);
 
   // ??? SUBMARINE SONAR SOUND ???????????????????????????????????????????????
   const sonarAudio = useRef(null);
@@ -1158,51 +1188,50 @@ const Submarine = ({ lastPos, lastRot, weather }) => {
     if (controls.left) localState.current.rot += YAW_SPEED * delta;
     if (controls.right) localState.current.rot -= YAW_SPEED * delta;
 
-    const targetVel = new THREE.Vector3();
+    _subTargetVel.set(0, 0, 0);
     if (controls.forward) {
-      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+      _subTargetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      _subTargetVel.x = -Math.sin(localState.current.rot) * SPEED;
     } else if (controls.backward) {
-      targetVel.z = Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+      _subTargetVel.z = Math.cos(localState.current.rot) * SPEED;
+      _subTargetVel.x = Math.sin(localState.current.rot) * SPEED;
     }
 
-    if (controls.up) targetVel.y = VERT_SPEED;
-    if (controls.down) targetVel.y = -VERT_SPEED;
+    if (controls.up) _subTargetVel.y = VERT_SPEED;
+    if (controls.down) _subTargetVel.y = -VERT_SPEED;
 
-    const currentPos = new THREE.Vector3();
-    physicsRef.current.getWorldPosition(currentPos);
+    physicsRef.current.getWorldPosition(_subPos);
 
-    // Giới hạn độ cao mặt nước (y = -8) - Dùng soft limit thay vì hard set vị trí
-    if (currentPos.y > -8.5) {
-      if (targetVel.y > 0) targetVel.y = 0; // Không cho ngoi lên thêm
+    // Giới hạn độ cao mặt nước (y = -8)
+    if (_subPos.y > -8.5) {
+      if (_subTargetVel.y > 0) _subTargetVel.y = 0;
       // Không tự động kéo xuống nữa, người chơi phải giữ Shift để lặn xuống
     }
 
     // Lerp nhanh hơn để xe phản hồi ngay khi bấm phím
     const moveLerp = (controls.forward || controls.backward) ? 0.3 : 0.15;
     const vertLerp = (controls.up || controls.down) ? 0.4 : 0.2;
-    localState.current.vel.x = THREE.MathUtils.lerp(localState.current.vel.x, targetVel.x, moveLerp);
-    localState.current.vel.z = THREE.MathUtils.lerp(localState.current.vel.z, targetVel.z, moveLerp);
-    localState.current.vel.y = THREE.MathUtils.lerp(localState.current.vel.y, targetVel.y, vertLerp);
+    localState.current.vel.x = THREE.MathUtils.lerp(localState.current.vel.x, _subTargetVel.x, moveLerp);
+    localState.current.vel.z = THREE.MathUtils.lerp(localState.current.vel.z, _subTargetVel.z, moveLerp);
+    localState.current.vel.y = THREE.MathUtils.lerp(localState.current.vel.y, _subTargetVel.y, vertLerp);
     
     // Giữ vận tốc theo chiều thẳng đứng nếu vượt quá mặt nước
-    if (currentPos.y > -8.5 && localState.current.vel.y > 0) {
+    if (_subPos.y > -8.5 && localState.current.vel.y > 0) {
       localState.current.vel.y = 0;
     }
     
     api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
     
     const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
-    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+    dispatchVehicleSpeed(Math.round(currentSpeed * 3.6));
 
     api.angularVelocity.set(0, 0, 0);
     api.rotation.set(0, localState.current.rot, 0);
 
-    visualRef.current.position.copy(currentPos);
+    visualRef.current.position.copy(_subPos);
     visualRef.current.rotation.y = localState.current.rot;
 
-    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastPos.current = [_subPos.x, _subPos.y, _subPos.z];
     lastRot.current = [0, localState.current.rot, 0];
 
     const now = Date.now();
@@ -1220,10 +1249,12 @@ const Submarine = ({ lastPos, lastRot, weather }) => {
 
     const dist = camAngle.current.dist;
     const hDist = Math.cos(camAngle.current.y) * dist;
-    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+    _subEuler.set(0, smoothRot.current, 0);
+    const offset = _subOffset.set(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(_subEuler);
 
-    state.camera.position.copy(currentPos).add(offset);
-    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+    state.camera.position.copy(_subPos).add(offset);
+    _subLookAt.set(0, 0, -2).applyEuler(_subEuler).add(_subPos);
+    state.camera.lookAt(_subLookAt);
   });
 
   return (
@@ -1364,7 +1395,7 @@ const MiniSubmarine = ({ lastPos, lastRot, weather }) => {
     api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
     
     const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
-    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+    dispatchVehicleSpeed(Math.round(currentSpeed * 3.6));
 
     api.angularVelocity.set(0, 0, 0);
     api.rotation.set(0, localState.current.rot, 0);
@@ -1414,6 +1445,11 @@ const Boat = ({ lastPos, lastRot, weather }) => {
   const smoothRot = useRef(0);
   const k = usePlayerControls();
   const carLightRef = useRef();
+
+  const vTargetVel = useMemo(() => new THREE.Vector3(), []);
+  const vCurrentPos = useMemo(() => new THREE.Vector3(), []);
+  const vOffset = useMemo(() => new THREE.Vector3(), []);
+  const eTemp = useMemo(() => new THREE.Euler(), []);
 
   // ??? SUBMARINE SONAR SOUND ???????????????????????????????????????????????
   const sonarAudio = useRef(null);
@@ -1499,40 +1535,39 @@ const Boat = ({ lastPos, lastRot, weather }) => {
     if (controls.left) localState.current.rot += YAW_SPEED * delta;
     if (controls.right) localState.current.rot -= YAW_SPEED * delta;
 
-    const targetVel = new THREE.Vector3();
+    vTargetVel.set(0, 0, 0);
     // Sử dụng Math.sin cho Z và Math.cos cho X nếu model bị lệch 90 độ, 
     // hoặc thử đảo dấu nếu nó đi ngược.
     if (controls.forward) {
-      targetVel.z = -Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = -Math.sin(localState.current.rot) * SPEED;
+      vTargetVel.z = -Math.cos(localState.current.rot) * SPEED;
+      vTargetVel.x = -Math.sin(localState.current.rot) * SPEED;
     } else if (controls.backward) {
-      targetVel.z = Math.cos(localState.current.rot) * SPEED;
-      targetVel.x = Math.sin(localState.current.rot) * SPEED;
+      vTargetVel.z = Math.cos(localState.current.rot) * SPEED;
+      vTargetVel.x = Math.sin(localState.current.rot) * SPEED;
     }
 
-    const currentPos = new THREE.Vector3();
-    physicsRef.current.getWorldPosition(currentPos);
+    physicsRef.current.getWorldPosition(vCurrentPos);
 
     // Lực đẩy Archimesdes (Lò xo): Giữ thuyền luôn ở độ cao mặt nước lúc spawn
-    targetVel.y = (targetHeight.current - currentPos.y) * 10.0;
+    vTargetVel.y = (targetHeight.current - vCurrentPos.y) * 10.0;
 
     // Bỏ qua lerp vận tốc để thuyền phản hồi tức thì
-    localState.current.vel.x = targetVel.x;
-    localState.current.vel.z = targetVel.z;
-    localState.current.vel.y = targetVel.y;
+    localState.current.vel.x = vTargetVel.x;
+    localState.current.vel.z = vTargetVel.z;
+    localState.current.vel.y = vTargetVel.y;
     
     api.velocity.set(localState.current.vel.x, localState.current.vel.y, localState.current.vel.z);
     
     const currentSpeed = Math.sqrt(localState.current.vel.x**2 + localState.current.vel.y**2 + localState.current.vel.z**2);
-    window.dispatchEvent(new CustomEvent('vehicle-speed', { detail: Math.round(currentSpeed * 3.6) }));
+    dispatchVehicleSpeed(Math.round(currentSpeed * 3.6));
 
     api.angularVelocity.set(0, 0, 0);
     api.rotation.set(0, localState.current.rot, 0);
 
-    visualRef.current.position.copy(currentPos);
+    visualRef.current.position.copy(vCurrentPos);
     visualRef.current.rotation.y = localState.current.rot;
 
-    lastPos.current = [currentPos.x, currentPos.y, currentPos.z];
+    lastPos.current = [vCurrentPos.x, vCurrentPos.y, vCurrentPos.z];
     lastRot.current = [0, localState.current.rot, 0];
 
     const now = Date.now();
@@ -1550,10 +1585,12 @@ const Boat = ({ lastPos, lastRot, weather }) => {
 
     const dist = camAngle.current.dist;
     const hDist = Math.cos(camAngle.current.y) * dist;
-    const offset = new THREE.Vector3(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(new THREE.Euler(0, smoothRot.current, 0));
+    eTemp.set(0, smoothRot.current, 0);
+    vOffset.set(Math.sin(camAngle.current.x) * hDist, Math.sin(camAngle.current.y) * dist, Math.cos(camAngle.current.x) * hDist).applyEuler(eTemp);
 
-    state.camera.position.copy(currentPos).add(offset);
-    state.camera.lookAt(currentPos.clone().add(new THREE.Vector3(0, 0, -2).applyEuler(new THREE.Euler(0, smoothRot.current, 0))));
+    state.camera.position.copy(vCurrentPos).add(vOffset);
+    vOffset.set(0, 0, -2).applyEuler(eTemp).add(vCurrentPos);
+    state.camera.lookAt(vOffset);
   });
 
   return (
@@ -2221,21 +2258,27 @@ function SettingsMenu({ masterMuted, toggleMasterMute, onLogout }) {
 }
 
 const LighthouseDistanceChecker = ({ showFishingGame, setIsNearLighthouse }) => {
+  const lighthousePositions = useMemo(() => [
+      { x: -500, z: 50 },
+      { x: -450, z: 50 }
+  ], []);
+  
+  const frameCount = useRef(0);
   useFrame((state) => {
     if (showFishingGame) return;
+    
+    // Chỉ check khoảng cách mỗi 6 frames (~10 lần/giây) để tiết kiệm CPU
+    frameCount.current++;
+    if (frameCount.current % 6 !== 0) return;
+
     const playerPos = state.camera.position;
-    // Kiểm tra tất cả vị trí ngọn hải đăng có trong scene
-    const lighthousePositions = [
-        { x: -500, z: 50 },
-        { x: -450, z: 50 }
-    ];
     
     let nearAny = false;
     for (const lp of lighthousePositions) {
         const dx = playerPos.x - lp.x;
         const dz = playerPos.z - lp.z;
         const distSq = dx*dx + dz*dz;
-        if (distSq < 25 * 25) { // Giảm xuống 25m cho chuẩn
+        if (distSq < 25 * 25) { 
             nearAny = true;
             break;
         }
@@ -3185,18 +3228,20 @@ export default function App() {
         <Canvas 
           camera={{ position: [0, 5, 10], fov: 60 }} 
           style={{ background: 'transparent' }}
-          dpr={[1, 2]} // Tự động nhận diện màn hình độ nét cao để triệt để xóa răng cưa ở viền
+          dpr={1}
           performance={{ min: 0.5 }}
+          shadows={false}
             gl={{ 
               powerPreference: "high-performance",
-              antialias: true, // Bật lại khử răng cưa theo yêu cầu
+              antialias: true,
               stencil: false,
               depth: true,
-              alpha: true, // PHẢI ĐỂ TRUE để bầu trời và môi trường hiển thị đúng
-              precision: 'highp',
-              desynchronized: false // Tắt cái này vì nó có thể gây lỗi hiển thị trên một số máy
+              alpha: true,
+              precision: 'mediump',
+              desynchronized: false
             }}
           >
+            <AdaptiveEvents />
             <LighthouseDistanceChecker showFishingGame={showFishingGame} setIsNearLighthouse={setIsNearLighthouse} />
             <Stats />
             <RaceTicker />
@@ -3206,7 +3251,7 @@ export default function App() {
             <Physics
               gravity={[0, -9.81, 0]}
               allowSleep={true}
-              iterations={5} // Giảm iterations vật lý một chút để tăng FPS (vẫn đủ mượt)
+              iterations={2} // Giảm xuống 2 để boost FPS cực mạnh cho physics
               tolerance={0.01}
               broadphase="SAP"
               defaultContactMaterial={{
@@ -3220,13 +3265,21 @@ export default function App() {
               <Debug color="black" scale={1.1}>
                 {/* Bản đồ và ground - không bao giờ remount */}
                 <Suspense fallback={null}>
-                  <Ground />
-                  <Lighthouse position={[-450, -50, 50]} />
-                  <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
+                  <Bvh firstHitOnly>
+                    <Ground />
+                    <Lighthouse position={[-450, -50, 50]} />
+                    <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
+                  </Bvh>
+                  
+                  {/* Lò Nướng Bánh Quy */}
+                  <CookieOven position={[0, 0, 10]} rotation={[0, 0, 0]} />
+                  
+                  {/* Hệ thống Pháo hoa I ❤️ UET */}
+                  <FireworksLauncher position={[3, 0, 5]} />
                   
                   {/* Trạm Bắn Tốc Độ */}
                   <SpeedTrap position={[0, 1, -50]} debug={debug} speedLimit={100} scale={[25, 10, 8]} />
-                  <ChasingUAV initialPosition={[0, 10, -50]} debug={debug} />
+                  <ChasingUAV initialPosition={[0, 10, -50]} debug={debug} modelScale={50} />
                   
                   {/* Cối xay gió (Hiển thị đúng 6 cái như đã đặt trong Blender) */}
                   <WindTurbine position={[0, 0, -10]} scale={0.8} />
@@ -3277,19 +3330,28 @@ export default function App() {
                   <Lighthouse position={[-500, -17, 50]} />
                   <MapWithPhysics mapFile="map.glb" collisionFile="map_collision.glb" position={[0, 0, 0]} scale={1} />
                   
+                  {/* Lò Nướng Bánh Quy */}
+                  <CookieOven position={[0, 0, 10]} rotation={[0, 0, 0]} />
+                  
                   {/* Biển bao quanh đảo - thấp hơn mặt đất hiện tại */}
                   <Ocean y={-8} size={4000} weather={activeWeather} />
+                  <UnderwaterCity />
                   <UnderwaterEffect />
-                  <FishSwarm count={5} modelPath="/models/fish/shark.glb" baseScale={3} />
+                  {/* Giảm mạnh số lượng cá để tránh lag (từ 90 con xuống 19 con) */}
+                  <FishSwarm count={3} modelPath="/models/fish/shark.glb" baseScale={3} />
+                  <FishSwarm count={4} modelPath="/models/fish/clownfish.glb" baseScale={1.5} rotationOffset={[0, Math.PI / 2, 0]} />
+                  <FishSwarm count={4} modelPath="/models/fish/bluetang.glb" baseScale={1.5} rotationOffset={[0, Math.PI / 2, 0]} />
+                  <FishSwarm count={4} modelPath="/models/fish/stripedfish.glb" baseScale={1.2} rotationOffset={[0, Math.PI / 2, 0]} />
+                  <FishSwarm count={4} modelPath="/models/fish/yellowfish.glb" baseScale={1.2} rotationOffset={[0, Math.PI / 2, 0]} />
                   {/* Coralfish cần xoay trục để đầu cá hướng đúng về phía trước (trục Z) */}
-                  <FishSwarm count={30} modelPath="/models/fish/coralfish.glb" baseScale={0.1} rotationOffset={[0, Math.PI / 2, 0]} />
+                  <FishSwarm count={10} modelPath="/models/fish/coralfish.glb" baseScale={0.1} rotationOffset={[0, Math.PI / 2, 0]} />
 
                   {/* Bến tàu đỗ phương tiện dưới nước - Truyền hàm mở Shop */}
                   <WaterVehicleStation position={[-289, 0, 50]} onOpenShop={() => window.dispatchEvent(new CustomEvent('open-dock-shop'))} />
 
                   {/* Trạm Bắn Tốc Độ */}
                   <SpeedTrap position={[6, 0.75, -64]} debug={debug} speedLimit={100} scale={[8, 1.5,0.1]} />
-                  <ChasingUAV initialPosition={[6, 10, -64]} debug={debug} />
+                  <ChasingUAV initialPosition={[6, 10, -64]} debug={debug} modelScale={1} />
                   
                   {/* Cối xay gió (Hiển thị đúng 6 cái như đã đặt trong Blender) */}
                   <WindTurbine position={[0, 0, -10]} scale={0.8} />
@@ -3417,16 +3479,6 @@ const VEHICLE_FILES = {
   boat:        ['/models/car/boat/chassis.glb'],
 };
 
-
-// ?????????????????????????????????????????????????????????????????????????????????
-// ?  useVehicleLoadProgress � STUB (�? V� HI?U H�A FETCH, KH�NG KH�I PH?C)      ?
-// ?  Tr�?c ��y hook n�y fetch l?i to�n b? model qua HTTP m?i khi app load,       ?
-// ?  g�y block UI 40+ gi�y. Gi? n� tr? v? 100 ngay l?p t?c v? t?t c? models     ?
-// ?  �? ��?c preload b?i VehiclePreloader trong loading screen (useGLTF.preload). ?
-// ?  KH�NG ��?C thay �?i h�m n�y th�nh fetch th?t. N?u mu?n track progress,     ?
-// ?  h?y d�ng onProgress callback c?a useGLTF thay v? fetch �?c l?p.             ?
-// ?????????????????????????????????????????????????????????????????????????????????
-// Hook theo doi tien do tai tung xe - Stub version (models da duoc preload qua loading screen)
 function useVehicleLoadProgress() {
   // Tat fetch lai model vi tat ca da duoc preload qua VehiclePreloader trong loading screen
   // Ham nay chi con de giu tuong thich voi cac phan con lai cua code

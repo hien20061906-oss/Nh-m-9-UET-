@@ -1,4 +1,4 @@
-import React, { useRef, useState, useEffect } from 'react';
+import React, { useRef, useState, useEffect, useMemo } from 'react';
 import { useFrame } from '@react-three/fiber';
 import { Text, Html } from '@react-three/drei';
 import * as THREE from 'three';
@@ -9,25 +9,27 @@ export const WaterVehicleStation = ({ position = [0, 0, 0], onOpenShop }) => {
   const group = useRef();
   const lightRef = useRef();
 
-  useFrame((state) => {
-    const time = state.clock.elapsedTime;
-    // Hiệu ứng nhấp nháy cho đèn trên cột
-    if (lightRef.current) {
-      lightRef.current.intensity = 1.5 + Math.sin(time * 3) * 0.5;
-    }
-    // Hiệu ứng lơ lửng nhẹ cho chữ
-    if (group.current) {
-      group.current.position.y = position[1] + Math.sin(time * 2) * 0.2;
-    }
+    const stationPos = useMemo(() => new THREE.Vector3(...position), [position]);
 
-    // Kiểm tra khoảng cách với người chơi (Camera)
-    const dist = state.camera.position.distanceTo(new THREE.Vector3(...position));
-    if (dist < 8) {
-      if (!isNear) setIsNear(true);
-    } else {
-      if (isNear) setIsNear(false);
-    }
-  });
+    useFrame((state) => {
+        const time = state.clock.elapsedTime;
+        // Hiệu ứng nhấp nháy cho đèn trên cột
+        if (lightRef.current) {
+            lightRef.current.intensity = 1.5 + Math.sin(time * 3) * 0.5;
+        }
+        // Hiệu ứng lơ lửng nhẹ cho chữ
+        if (group.current) {
+            group.current.position.y = position[1] + Math.sin(time * 2) * 0.2;
+        }
+
+        // Kiểm tra khoảng cách với người chơi (Camera)
+        const distSq = state.camera.position.distanceToSquared(stationPos);
+        if (distSq < 8 * 8) {
+            if (!isNear) setIsNear(true);
+        } else {
+            if (isNear) setIsNear(false);
+        }
+    });
 
   // Lắng nghe phím E
   useEffect(() => {
