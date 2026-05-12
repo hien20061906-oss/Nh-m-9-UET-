@@ -245,7 +245,7 @@ export const SpeedTrap = ({ position = [0, 1, -50], rotation = [0, 0, 0], scale 
       {/* Vùng cảm biến vô hình (Hitbox) */}
       <mesh ref={meshRef} visible={debug}>
         <boxGeometry args={scale} />
-        <meshBasicMaterial color="red" wireframe depthTest={false} opacity={0.3} transparent />
+        <meshBasicMaterial color="red" wireframe depthTest={false} opacity={0.3} transparent fog={false} />
       </mesh>
 
       {/* Dải Laser quét trên mặt đường */}
@@ -256,6 +256,7 @@ export const SpeedTrap = ({ position = [0, 1, -50], rotation = [0, 0, 0], scale 
           transparent opacity={0.2} 
           emissive="#ff0044" emissiveIntensity={isFlashing ? 5 : 1}
           side={THREE.DoubleSide}
+          fog={false}
         />
       </mesh>
 

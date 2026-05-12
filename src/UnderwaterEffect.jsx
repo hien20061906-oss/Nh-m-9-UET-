@@ -87,11 +87,11 @@ const UnderwaterEffect = () => {
       // Trả lại màu xanh thẫm cho độ sâu đại dương
       const underwaterColor = new THREE.Color('#003366'); 
       state.scene.background = underwaterColor;
-      // Sương mù mỏng để vẫn nhìn thấy xung quanh
+      // Sương mù mỏng để vẫn nhìn thấy xung quanh (chỉ set khi lặn)
       state.scene.fog = new THREE.FogExp2(underwaterColor, 0.015);
     } else {
       state.scene.background = null; 
-      state.scene.fog = null;
+      // KHÔNG set scene.fog = null ở đây vì sẽ làm mất sương mù của hệ thống thời tiết
     }
   });
 

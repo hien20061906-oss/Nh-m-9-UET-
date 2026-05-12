@@ -1,18 +1,19 @@
 import React, { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { useFrame, useThree } from '@react-three/fiber';
 import * as THREE from 'three';
+import { Stars } from '@react-three/drei';
 
 // ─── WEATHER PRESETS ─────────────────────────────────────────────────────────
 const WEATHER_PRESETS = {
   sunny: {
     label: '☀️ Nắng',
-    fogColor: '#f0905a',
-    fogNear: 80,
-    fogFar: 300,
-    ambientIntensity: 0.2,
-    ambientColor: '#fff5e0',
-    sunIntensity: 2.0,
-    sunColor: '#ffe0c0',
+    fogColor: '#b0d0ff', 
+    fogNear: 150,
+    fogFar: 800,
+    ambientIntensity: 0.4, 
+    ambientColor: '#fff5e6', // Thêm sắc vàng nhẹ (warm white)
+    sunIntensity: 1.5,   
+    sunColor: '#ffedcc',    // Màu nắng vàng dịu cinematic
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 600,
@@ -20,8 +21,8 @@ const WEATHER_PRESETS = {
     snowSize: 0.18,
     snowOpacity: 0.85,
     lightningCount: 0,
-    skyTop: '#87CEEB',
-    skyBottom: '#f0905a',
+    skyTop: '#4fa9ff',   // Màu trời xanh biển cao cấp
+    skyBottom: '#a0c8ff', // Chân trời sáng nhẹ
   },
   rainy: {
     label: '🌧️ Mưa',
@@ -32,9 +33,9 @@ const WEATHER_PRESETS = {
     ambientColor: '#c0d0e0',
     sunIntensity: 0.3,
     sunColor: '#aabbcc',
-    rainCount: 3000,
+    rainCount: 20000,
     rainLength: 0.8,
-    rainSpread: 600,
+    rainSpread: 1500,
     snowCount: 0,
     snowSize: 0.4,
     snowOpacity: 0.85,
@@ -53,8 +54,8 @@ const WEATHER_PRESETS = {
     sunColor: '#cce0ff',
     rainCount: 0,
     rainLength: 0.5,
-    rainSpread: 600,
-    snowCount: 3000,
+    rainSpread: 1500,
+    snowCount: 20000,
     snowSize: 0.4,
     snowOpacity: 0.9,
     lightningCount: 0,
@@ -63,13 +64,14 @@ const WEATHER_PRESETS = {
   },
   foggy: {
     label: '🌫️ Sương Mù',
-    fogColor: '#c8c8c0',
-    fogNear: 5,
-    fogFar: 40,
-    ambientIntensity: 0.5,
-    ambientColor: '#d0d0c8',
-    sunIntensity: 0.2,
-    sunColor: '#d0d0c0',
+    fogColor: '#b0b8c0',
+    fogDensity: 0.045,  // Độ dày sương mù (dùng cho FogExp2)
+    fogNear: 2,
+    fogFar: 50,
+    ambientIntensity: 0.4,
+    ambientColor: '#b0b8c8',
+    sunIntensity: 0.1,
+    sunColor: '#a0a0b0',
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 200,
@@ -77,18 +79,18 @@ const WEATHER_PRESETS = {
     snowSize: 0.18,
     snowOpacity: 0.85,
     lightningCount: 0,
-    skyTop: '#a0a098',
-    skyBottom: '#c8c8c0',
+    skyTop: '#9098a0',
+    skyBottom: '#b0b8c0',
   },
   night: {
     label: '🌙 Ban Đêm',
-    fogColor: '#030308',
-    fogNear: 30,
-    fogFar: 70,
-    ambientIntensity: 0.2,
-    ambientColor: '#404060',
-    sunIntensity: 0.1,
-    sunColor: '#202040',
+    fogColor: '#001535', 
+    fogNear: 50,      // Đẩy sương xa ra để không làm mờ UI
+    fogFar: 300,
+    ambientIntensity: 0.6, // Tăng ambient để vật thể rõ hơn
+    ambientColor: '#1a2a4a',
+    sunIntensity: 1.5,
+    sunColor: '#88bbff', 
     rainCount: 0,
     rainLength: 0.5,
     rainSpread: 600,
@@ -96,8 +98,10 @@ const WEATHER_PRESETS = {
     snowSize: 0.18,
     snowOpacity: 0.85,
     lightningCount: 0,
-    skyTop: '#010103',
-    skyBottom: '#050510',
+    skyTop: '#01081a',   
+    skyBottom: '#0a2a5a', 
+    stars: true,         
+    sunIntensity: 1.8,   // Tăng ánh trăng thêm xíu cho biển lung linh
   },
 };
 
@@ -109,8 +113,8 @@ function lerpColor(a, b, t) {
 }
 
 // ─── RAIN PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_RAIN = 3000;
-function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 600 }) {
+const MAX_RAIN = 150000;
+function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 1500 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_RAIN * 6), []);
   const velocities = useMemo(() => new Float32Array(MAX_RAIN), []);
@@ -147,10 +151,10 @@ function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 
       pos[idx + 1] -= dy;
       pos[idx + 4] -= dy;
 
-      // Wrap Y
-      if (pos[idx + 1] < -5) {
-        pos[idx + 1] = 40;
-        pos[idx + 4] = 40 - rainLength;
+      // Wrap Y - Tăng độ cao khởi tạo lên 60 để bao phủ tốt hơn khi cam ở trên cao
+      if (pos[idx + 1] < -10) {
+        pos[idx + 1] = 60 + Math.random() * 10;
+        pos[idx + 4] = pos[idx + 1] - rainLength;
       }
 
       // Wrap X
@@ -176,7 +180,7 @@ function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 
   });
 
   return (
-    <lineSegments ref={mesh}>
+    <lineSegments ref={mesh} frustumCulled={false}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -197,8 +201,8 @@ function Rain({ count = 3000, color = '#aaddff', rainLength = 0.5, rainSpread = 
 }
 
 // ─── SNOW PARTICLES (Wrapped World Space) ──────────────────────────────────
-const MAX_SNOW = 3000;
-function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 600 }) {
+const MAX_SNOW = 150000;
+function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 1500 }) {
   const mesh = useRef();
   const positions = useMemo(() => new Float32Array(MAX_SNOW * 3), []);
   const drifts = useMemo(() => new Float32Array(MAX_SNOW), []);
@@ -237,9 +241,9 @@ function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 6
       // Tối ưu: Chỉ tính Sin một lần cho hiệu ứng đung đưa nhẹ
       pos[idx] += (drift[i] * dt) + Math.sin(t + i) * 0.01;
 
-      // Wrap Y
-      if (pos[idx + 1] < 0) {
-        pos[idx + 1] = 40;
+      // Wrap Y - Tăng độ cao để phủ kín tầm nhìn khi cam ở trên cao
+      if (pos[idx + 1] < -5) {
+        pos[idx + 1] = 60 + Math.random() * 10;
       }
 
       // Wrap X
@@ -255,7 +259,7 @@ function Snow({ count = 3000, snowSize = 0.4, snowOpacity = 0.85, snowSpread = 6
   });
 
   return (
-    <points ref={mesh}>
+    <points ref={mesh} frustumCulled={false}>
       <bufferGeometry>
         <bufferAttribute
           attach="attributes-position"
@@ -418,31 +422,48 @@ function SceneUpdater({ weather }) {
   const dirRef2 = useRef(null);
 
   useEffect(() => {
-    if (!scene.fog) {
-      scene.fog = new THREE.Fog(weather.fogColor, weather.fogNear, weather.fogFar);
-    }
-    fogRef.current = scene.fog;
-  }, []);
+    // Sử dụng FogExp2 để sương mù trông dày đặc và bao phủ tốt hơn (atmospheric)
+    const fog = new THREE.FogExp2(weather.fogColor, weather.fogDensity || 0.005);
+    scene.fog = fog;
+    fogRef.current = fog;
+    return () => { scene.fog = null; };
+  }, [scene]);
 
-  useFrame(() => {
-    if (fogRef.current) {
+  useFrame((state) => {
+    // Nếu trên mặt nước, đảm bảo scene.fog luôn là object của hệ thống thời tiết
+    if (state.camera.position.y >= -8.5) {
+      if (!state.scene.fog || state.scene.fog !== fogRef.current) {
+        state.scene.fog = fogRef.current;
+      }
+    }
+
+    if (fogRef.current && state.scene.fog === fogRef.current) {
       const fog = fogRef.current;
-      const f = new THREE.Color(weather.fogColor);
-      fog.color.lerp(f, 0.005);
-      fog.near = lerpVal(fog.near, weather.fogNear, 0.005);
-      fog.far = lerpVal(fog.far, weather.fogFar, 0.005);
+      const targetColor = new THREE.Color(weather.fogColor);
+      
+      // Cập nhật màu sắc sương mù
+      fog.color.lerp(targetColor, 0.05);
+
+      // Nếu là FogExp2 thì cập nhật density, nếu là Fog thường thì cập nhật near/far
+      if (fog.isFogExp2) {
+        const targetDensity = weather.fogDensity || (1 / (weather.fogFar * 1.5 || 500));
+        fog.density = lerpVal(fog.density, targetDensity, 0.05);
+      } else {
+        fog.near = lerpVal(fog.near, weather.fogNear, 0.05);
+        fog.far = lerpVal(fog.far, weather.fogFar, 0.05);
+      }
     }
     if (ambientRef.current) {
-      ambientRef.current.intensity = lerpVal(ambientRef.current.intensity, weather.ambientIntensity, 0.005);
-      ambientRef.current.color.lerp(new THREE.Color(weather.ambientColor), 0.005);
+      ambientRef.current.intensity = lerpVal(ambientRef.current.intensity, weather.ambientIntensity, 0.05);
+      ambientRef.current.color.lerp(new THREE.Color(weather.ambientColor), 0.05);
     }
     if (dirRef1.current) {
-      dirRef1.current.intensity = lerpVal(dirRef1.current.intensity, weather.sunIntensity, 0.005);
-      dirRef1.current.color.lerp(new THREE.Color(weather.sunColor), 0.005);
+      dirRef1.current.intensity = lerpVal(dirRef1.current.intensity, weather.sunIntensity, 0.05);
+      dirRef1.current.color.lerp(new THREE.Color(weather.sunColor), 0.05);
     }
     if (dirRef2.current) {
-      dirRef2.current.intensity = lerpVal(dirRef2.current.intensity, weather.sunIntensity * 0.3, 0.005);
-      dirRef2.current.color.lerp(new THREE.Color(weather.sunColor), 0.005);
+      dirRef2.current.intensity = lerpVal(dirRef2.current.intensity, weather.sunIntensity * 0.3, 0.05);
+      dirRef2.current.color.lerp(new THREE.Color(weather.sunColor), 0.05);
     }
   });
 
@@ -457,9 +478,40 @@ function SceneUpdater({ weather }) {
 
 // ─── ENVIRONMENT COMPONENT (export mặc định) ─────────────────────────────────
 export default function Environment({ weather }) {
+  const { scene } = useThree();
+
+  // Đảm bảo các vật thể trong môi trường nhận sương mù, trừ các vật thể UI/đặc biệt
+  useEffect(() => {
+    scene.traverse((obj) => {
+      if (obj.isMesh && obj.material) {
+        const materials = Array.isArray(obj.material) ? obj.material : [obj.material];
+        materials.forEach(m => {
+          // Chỉ ép bật sương mù nếu vật liệu đó chưa được set fog={false} một cách chủ đích
+          // (giúp giữ vạch đích, đồng xu... luôn sáng)
+          if (m.fog !== false) {
+            m.fog = true;
+          }
+        });
+      }
+    });
+  }, [scene, weather]);
+
   return (
     <>
       <SceneUpdater weather={weather} />
+      {weather.stars && (
+        <group position={[0, 50, 0]}>
+          <Stars 
+            radius={500} 
+            depth={50} 
+            count={8000} 
+            factor={6} 
+            saturation={0} 
+            fade 
+            speed={1} 
+          />
+        </group>
+      )}
       <Rain count={weather.rainCount} rainLength={weather.rainLength} rainSpread={weather.rainSpread ?? 600} />
       <Snow count={weather.snowCount} snowSize={weather.snowSize} snowOpacity={weather.snowOpacity} snowSpread={weather.rainSpread ?? 600} />
       <Lightning count={weather.lightningCount ?? 0} spread={weather.rainSpread ?? 600} />
@@ -470,36 +522,17 @@ export default function Environment({ weather }) {
 // ─── WEATHER CONTROL PANEL (UI overlay) ──────────────────────────────────────
 export function WeatherPanel({ weather, setWeather }) {
   const [isOpen, setIsOpen] = useState(false);
-  const [mode, setMode] = useState('sunny');          // preset đang chọn
-  const [autoMode, setAutoMode] = useState(true);     // Tự động chuyển thời tiết
-  const [manual, setManual] = useState({              // giá trị manual slider
-    fogNear: WEATHER_PRESETS.sunny.fogNear,
-    fogFar: WEATHER_PRESETS.sunny.fogFar,
-    ambientIntensity: WEATHER_PRESETS.sunny.ambientIntensity,
-    rainCount: WEATHER_PRESETS.sunny.rainCount,
-    rainLength: WEATHER_PRESETS.sunny.rainLength,
-    rainSpread: WEATHER_PRESETS.sunny.rainSpread,
-    snowCount: WEATHER_PRESETS.sunny.snowCount,
-    snowSize: WEATHER_PRESETS.sunny.snowSize,
-    snowOpacity: WEATHER_PRESETS.sunny.snowOpacity,
-    lightningCount: WEATHER_PRESETS.sunny.lightningCount,
-  });
+  const [autoMode, setAutoMode] = useState(false);
+  const [mode, setMode] = useState('sunny');
   const [isManualMode, setIsManualMode] = useState(false);
 
+  // Sync mode when weather changes externally (e.g. from App.jsx or initial load)
   useEffect(() => {
-    setManual({
-      fogNear: weather.fogNear,
-      fogFar: weather.fogFar,
-      ambientIntensity: weather.ambientIntensity,
-      rainCount: weather.rainCount,
-      rainLength: weather.rainLength,
-      rainSpread: weather.rainSpread ?? 600,
-      snowCount: weather.snowCount,
-      snowSize: weather.snowSize,
-      snowOpacity: weather.snowOpacity,
-      lightningCount: weather.lightningCount ?? 0,
-    });
-  }, [weather]);
+    const currentKey = Object.keys(WEATHER_PRESETS).find(k => WEATHER_PRESETS[k].label === weather.label);
+    if (currentKey && !isManualMode) {
+      setMode(currentKey);
+    }
+  }, [weather, isManualMode]);
 
   // Auto weather interval
   useEffect(() => {
@@ -528,18 +561,6 @@ export function WeatherPanel({ weather, setWeather }) {
     setMode(key);
     setIsManualMode(false);
     const p = WEATHER_PRESETS[key];
-    setManual({
-      fogNear: p.fogNear,
-      fogFar: p.fogFar,
-      ambientIntensity: p.ambientIntensity,
-      rainCount: p.rainCount,
-      rainLength: p.rainLength,
-      rainSpread: p.rainSpread,
-      snowCount: p.snowCount,
-      snowSize: p.snowSize,
-      snowOpacity: p.snowOpacity,
-      lightningCount: p.lightningCount,
-    });
     setWeather(p);
   }, [setWeather]);
 
@@ -547,8 +568,7 @@ export function WeatherPanel({ weather, setWeather }) {
   const handleSlider = (key, value) => {
     setAutoMode(false);
     setIsManualMode(true);
-    const next = { ...manual, [key]: Number(value) };
-    setManual(next);
+    // Cập nhật trực tiếp vào state weather của App.jsx
     setWeather(prev => ({ ...prev, [key]: Number(value) }));
   };
 
@@ -645,11 +665,11 @@ export function WeatherPanel({ weather, setWeather }) {
                 style={{
                   padding: '9px 6px',
                   borderRadius: '10px',
-                  border: `2px solid ${mode === key && !isManualMode ? '#5588ff' : 'rgba(255,255,255,0.1)'}`,
-                  background: mode === key && !isManualMode
+                  border: `2px solid ${mode === key ? '#5588ff' : 'rgba(255,255,255,0.1)'}`,
+                  background: mode === key
                     ? 'rgba(60,100,220,0.3)'
                     : 'rgba(255,255,255,0.05)',
-                  color: mode === key && !isManualMode ? '#c8d8ff' : '#aaa',
+                  color: mode === key ? '#c8d8ff' : '#aaa',
                   fontSize: '12px',
                   fontWeight: 600,
                   cursor: 'pointer',
@@ -670,7 +690,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🌫️ Sương bắt đầu"
-              value={manual.fogNear}
+              value={weather.fogNear}
               min={1} max={100} step={1}
               onChange={v => handleSlider('fogNear', v)}
               color="#88aaff"
@@ -678,7 +698,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🌫️ Sương kết thúc"
-              value={manual.fogFar}
+              value={weather.fogFar}
               min={20} max={400} step={5}
               onChange={v => handleSlider('fogFar', v)}
               color="#88aaff"
@@ -686,7 +706,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="💡 Ánh sáng"
-              value={manual.ambientIntensity}
+              value={weather.ambientIntensity}
               min={0} max={3} step={0.05}
               onChange={v => handleSlider('ambientIntensity', v)}
               color="#ffdd88"
@@ -694,7 +714,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🌧️ Số hạt mưa"
-              value={manual.rainCount}
+              value={weather.rainCount}
               min={0} max={150000} step={1000}
               onChange={v => handleSlider('rainCount', Math.round(v))}
               color="#aaddff"
@@ -702,7 +722,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="📏 Độ dài hạt mưa"
-              value={manual.rainLength}
+              value={weather.rainLength}
               min={0.1} max={3.0} step={0.05}
               onChange={v => handleSlider('rainLength', v)}
               color="#88ccff"
@@ -710,7 +730,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🌧️ Độ dày vùng mưa"
-              value={manual.rainSpread}
+              value={weather.rainSpread}
               min={10} max={1500} step={50}
               onChange={v => handleSlider('rainSpread', Math.round(v))}
               color="#66bbff"
@@ -718,7 +738,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="❄️ Số hạt tuyết"
-              value={manual.snowCount}
+              value={weather.snowCount}
               min={0} max={150000} step={1000}
               onChange={v => handleSlider('snowCount', Math.round(v))}
               color="#ddeeff"
@@ -726,7 +746,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🔵 Kích thước tuyết"
-              value={manual.snowSize}
+              value={weather.snowSize}
               min={0.05} max={0.8} step={0.01}
               onChange={v => handleSlider('snowSize', v)}
               color="#cceeff"
@@ -734,7 +754,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="🌨️ Độ dày tuyết"
-              value={manual.snowOpacity}
+              value={weather.snowOpacity}
               min={0.1} max={1.0} step={0.05}
               onChange={v => handleSlider('snowOpacity', v)}
               color="#eef5ff"
@@ -742,7 +762,7 @@ export function WeatherPanel({ weather, setWeather }) {
 
             <SliderRow
               label="⚡ Số tia sét"
-              value={manual.lightningCount}
+              value={weather.lightningCount}
               min={0} max={30000} step={10}
               onChange={v => handleSlider('lightningCount', Math.round(v))}
               color="#ffe066"

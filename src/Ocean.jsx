@@ -1,135 +1,206 @@
 import { useRef, useMemo } from 'react';
-import { useFrame } from '@react-three/fiber';
+import { useFrame, useLoader } from '@react-three/fiber';
 import * as THREE from 'three';
+import { TextureLoader, RepeatWrapping } from 'three';
 
-const Ocean = ({ 
-  y = -3,           // Độ cao của mặt biển (thấp hơn mặt đất)
-  size = 2000,      // Kích thước biển (rất rộng)
-  color = '#006994' // Màu nước biển
+// ─── HIGH-FIDELITY OCEAN SHADER (ported from Submarine Simulation System) ──────
+// Features: dual normal map animation, Fresnel reflectivity, specular highlights,
+//           depth-based underwater light absorption, volumetric underwater look.
+
+const Ocean = ({
+  y = -3,          // height of ocean surface
+  size = 2000,     // ocean plane size
+  weather,         // prop thời tiết toàn cục
 }) => {
   const meshRef = useRef();
 
-  // Tạo shader material cho hiệu ứng sóng nhẹ và lấp lánh
+  // Load the two water normal maps from Submarine project
+  const normalMap1 = useLoader(TextureLoader, '/waterNormal1.png');
+  const normalMap2 = useLoader(TextureLoader, '/waterNormal2.png');
+
+  // Configure repeat wrapping for tiling
+  useMemo(() => {
+    [normalMap1, normalMap2].forEach(tex => {
+      tex.wrapS = RepeatWrapping;
+      tex.wrapT = RepeatWrapping;
+    });
+  }, [normalMap1, normalMap2]);
+
   const material = useMemo(() => new THREE.ShaderMaterial({
     uniforms: {
-      uTime:      { value: 0 },
-      uColor:     { value: new THREE.Color(color) },
-      uFoamColor: { value: new THREE.Color('#a8d8ea') },
+      uTime:       { value: 0 },
+      uNormalMap1: { value: normalMap1 },
+      uNormalMap2: { value: normalMap2 },
+      uCameraY:    { value: 0 },
+      uSunDir:     { value: new THREE.Vector3(0.6, 0.8, 0.2).normalize() },
+      uSkyTop:     { value: new THREE.Color('#1a3a5c') },
+      uSkyHorizon: { value: new THREE.Color('#4a8cb5') },
+      uWaterBase:  { value: new THREE.Color('#001020') }, // Màu nền của nước biển
     },
     vertexShader: /* glsl */`
-      uniform float uTime;
-      varying vec2 vUv;
-      varying vec3 vWorldPosition;
-
-      // Hàm tính sóng Gerstner đơn giản
-      vec3 gerstnerWave(vec3 pos, vec2 dir, float steepness, float wavelength, float speed) {
-        dir = normalize(dir);
-        float k = 2.0 * 3.14159 / wavelength;
-        float f = k * (dot(dir, pos.xz) - speed * uTime);
-        float a = steepness / k;
-        
-        return vec3(
-          dir.x * (a * cos(f)),
-          a * sin(f),
-          dir.y * (a * cos(f))
-        );
-      }
+      varying vec2 vWorldXZ;
+      varying vec2 vUV;
+      varying vec3 vWorldPos;
 
       void main() {
-        vUv = uv * 20.0; // Scale UV để sóng nhỏ và chi tiết hơn
-
-        vec3 pos = position;
-        
-        // Kết hợp 3 luồng sóng đan chéo nhau để tạo bề mặt nước tự nhiên
-        pos += gerstnerWave(position, vec2(1.0, 1.0), 0.05, 20.0, 1.5);
-        pos += gerstnerWave(position, vec2(1.0, -0.5), 0.04, 15.0, 2.0);
-        pos += gerstnerWave(position, vec2(-0.2, 0.8), 0.03, 10.0, 2.5);
-
-        vWorldPosition = pos;
-        gl_Position = projectionMatrix * modelViewMatrix * vec4(pos, 1.0);
+        vec4 worldPos4 = modelMatrix * vec4(position, 1.0);
+        vWorldPos = worldPos4.xyz;
+        vWorldXZ  = worldPos4.xz;
+        // UV scale matches Submarine's NORMAL_MAP_SCALE = 0.05
+        vUV = vWorldXZ * 0.05;
+        gl_Position = projectionMatrix * viewMatrix * worldPos4;
       }
     `,
     fragmentShader: /* glsl */`
       uniform float uTime;
-      uniform vec3 uColor;
-      varying vec2 vUv;
-      varying vec3 vWorldPosition;
+      uniform sampler2D uNormalMap1;
+      uniform sampler2D uNormalMap2;
+      uniform float     uCameraY;
+      uniform vec3      uSunDir;
+      uniform vec3      uSkyTop;
+      uniform vec3      uSkyHorizon;
+      uniform vec3      uWaterBase;
 
-      // Hàm tạo nhiễu ngẫu nhiên
-      vec2 hash(vec2 p) {
-        p = vec2(dot(p, vec2(127.1, 311.7)), dot(p, vec2(269.5, 183.3)));
-        return -1.0 + 2.0 * fract(sin(p) * 43758.5453123);
-      }
+      varying vec2 vWorldXZ;
+      varying vec2 vUV;
+      varying vec3 vWorldPos;
 
-      // Hàm tạo nhiễu Simplex (giúp tạo vân nước lấp lánh)
-      float noise(in vec2 p) {
-        const float K1 = 0.366025404; // (sqrt(3)-1)/2;
-        const float K2 = 0.211324865; // (3-sqrt(3))/6;
-        vec2 i = floor(p + (p.x + p.y) * K1);
-        vec2 a = p - i + (i.x + i.y) * K2;
-        vec2 o = (a.x > a.y) ? vec2(1.0, 0.0) : vec2(0.0, 1.0);
-        vec2 b = a - o + K2;
-        vec2 c = a - 1.0 + 2.0 * K2;
-        vec3 h = max(0.5 - vec3(dot(a, a), dot(b, b), dot(c, c)), 0.0);
-        vec3 n = h * h * h * h * vec3(dot(a, hash(i + 0.0)), dot(b, hash(i + o)), dot(c, hash(i + 1.0)));
-        return dot(n, vec3(70.0));
+      // ── Constants matching Submarine Settings.js ──────────────────────────
+      const float NORMAL_MAP_STRENGTH = 10.2;
+      const vec2  VELOCITY_1          = vec2(0.1, 0.0);
+      const vec2  VELOCITY_2          = vec2(0.0, 0.1);
+      const float SPECULAR_SHARPNESS  = 100.0;
+      const float MAX_VIEW_DEPTH      = 1000.0;
+      const float DENSITY             = 0.1;
+      const vec3  ABSORPTION          = vec3(1.0) / vec3(20.0, 80.0, 200.0);
+      // critical angle for total internal reflection (water IOR ~1.33)
+      const float CRITICAL_ANGLE      = 0.7297;  // asin(1/1.33) / (PI/2)
+
+      float pow2(float x) { return x * x; }
+
+      // Simple sky colour based on view direction
+      vec3 sampleSky(vec3 dir) {
+        float upness  = clamp(dir.y * 2.0, 0.0, 1.0);
+        vec3 sky      = mix(uSkyHorizon, uSkyTop, upness);
+        // cheap sun disc
+        float sunDot  = max(0.0, dot(dir, normalize(uSunDir)));
+        sky += vec3(1.0, 0.95, 0.8) * pow(sunDot, 64.0) * 3.0;
+        return sky;
       }
 
       void main() {
-        // Tạo 2 lớp vân nước di chuyển ngược chiều nhau
-        float n1 = noise(vUv * 2.0 + uTime * 0.2);
-        float n2 = noise(vUv * 3.0 - uTime * 0.15);
-        
-        // Kết hợp vân nước để tạo hiệu ứng lấp lánh (Caustics)
-        float waterPattern = (n1 + n2) * 0.5;
-        waterPattern = smoothstep(0.1, 0.3, waterPattern); // Làm sắc nét các vệt sáng
+        // ── Build dual normal from two scrolling normal maps ────────────────
+        vec3 n1 = texture2D(uNormalMap1, vUV + VELOCITY_1 * uTime).xyz * 2.0 - 1.0;
+        vec3 n2 = texture2D(uNormalMap2, vUV + VELOCITY_2 * uTime).xyz * 2.0 - 1.0;
+        vec3 rawNormal = (n1 + n2) * NORMAL_MAP_STRENGTH;
+        rawNormal += vec3(0.0, 0.0, 1.0);          // add up-pointing base
+        // Submarine uses .xzy swizzle (Y-up world) after normalising
+        vec3 normal = normalize(rawNormal).xzy;
 
-        // Chỉ dùng 1 màu cho mặt biển cho đồng bộ (Dark Navy)
-        vec3 seaColor = vec3(0.0, 0.2, 0.4);
-        vec3 foamColor = vec3(0.85, 0.95, 1.0);
+        // ── View vector ──────────────────────────────────────────────────────
+        vec3 worldPosXYZ = vec3(vWorldXZ.x, 0.0, vWorldXZ.y);
+        vec3 viewVec     = worldPosXYZ - cameraPosition;
+        float viewLen    = length(viewVec);
+        vec3 viewDir     = viewVec / max(viewLen, 0.001);
 
-        // Nước biển 1 màu, không gradient
-        vec3 baseColor = seaColor;
+        // ── ABOVE WATER: Fresnel + specular + sky reflection ─────────────────
+        if (uCameraY > 0.0) {
+          // Specular (Blinn-Phong)
+          vec3 halfDir  = normalize(uSunDir - viewDir);
+          float spec    = pow(max(0.0, dot(normal, halfDir)), SPECULAR_SHARPNESS);
+          spec         *= 1.1; // SPECULAR_SIZE
 
-        // Thêm vân nước lấp lánh lên bề mặt
-        vec3 finalColor = mix(baseColor, foamColor, waterPattern * 0.4);
+          // Fresnel reflectivity
+          float fresnel = pow2(1.0 - max(0.0, dot(-viewDir, normal)));
 
-        // Fresnel effect (Phản chiếu ánh sáng mặt trời)
-        float fresnel = dot(normalize(vec3(0.0, 1.0, 0.0)), normalize(vec3(0.0, 1.0, 1.0)));
-        finalColor += fresnel * 0.15;
+          // Sky reflection + Base water body color
+          vec3 reflected = sampleSky(reflect(viewDir, normal));
+          vec3 surface   = mix(uWaterBase, reflected, fresnel);
+          
+          // Add specular highlights (sun/moon glint)
+          surface        = max(surface, vec3(spec));
 
-        // Làm mờ viền biển
-        float edgeFadeX = 1.0 - pow(abs((vUv.x / 20.0) - 0.5) * 2.0, 4.0);
-        float edgeFadeZ = 1.0 - pow(abs((vUv.y / 20.0) - 0.5) * 2.0, 4.0);
-        float alpha = min(edgeFadeX, edgeFadeZ);
-        // Tăng độ trong suốt một chút để có thể lờ mờ nhìn thấy dưới biển từ trên cao
-        alpha = clamp(alpha * 2.0, 0.75, 0.9);
+          // Depth-based fog towards horizon
+          float fog    = clamp(viewLen / 10000.0, 0.0, 1.0);
+          surface      = mix(surface, uSkyHorizon, fog);
 
-        gl_FragColor = vec4(finalColor, alpha);
+          float alpha  = max(max(fresnel, spec), fog);
+          gl_FragColor = vec4(surface, clamp(alpha + 0.45, 0.45, 0.95));
+          return;
+        }
+
+        // ── UNDERWATER: depth light absorption ──────────────────────────────
+        float originY  = uCameraY;
+        float depth    = min(viewLen, MAX_VIEW_DEPTH);
+        float sampleY  = originY + viewDir.y * depth;
+
+        // Light absorption (exponential, Submarine formula)
+        vec3 light = exp((sampleY - MAX_VIEW_DEPTH * DENSITY) * ABSORPTION);
+        // Modulate by sun brightness
+        light *= vec3(0.9, 0.95, 1.0);
+
+        // Fresnel from below
+        float refFresnel = pow2(1.0 - max(0.0, dot(viewDir, normal)));
+        float t = clamp(max(refFresnel, depth / MAX_VIEW_DEPTH), 0.0, 1.0);
+
+        // Total internal reflection check
+        if (dot(viewDir, normal) < CRITICAL_ANGLE) {
+          vec3 r        = reflect(viewDir, -normal);
+          float rSampleY = r.y * (MAX_VIEW_DEPTH - depth);
+          vec3 rColor   = exp((rSampleY - MAX_VIEW_DEPTH * DENSITY) * ABSORPTION);
+          rColor *= vec3(0.9, 0.95, 1.0);
+          gl_FragColor  = vec4(mix(rColor, light, t), 1.0);
+          return;
+        }
+
+        gl_FragColor = vec4(light, t);
       }
     `,
     transparent: true,
+    precision: 'mediump',
     side: THREE.DoubleSide,
-  }), [color]);
+    depthWrite: false,
+  }), [normalMap1, normalMap2]);
 
-  // Cập nhật thời gian để sóng chuyển động
+  // Update per-frame uniforms
   useFrame((state) => {
-    if (material) {
-      material.uniforms.uTime.value = state.clock.elapsedTime;
+    if (!material) return;
+    material.uniforms.uTime.value    = state.clock.elapsedTime;
+    material.uniforms.uCameraY.value = state.camera.position.y;
+    
+    // Đồng bộ màu sắc biển với bầu trời và thời tiết
+    if (weather) {
+      material.uniforms.uSkyTop.value.set(weather.skyTop);
+      material.uniforms.uSkyHorizon.value.set(weather.skyBottom);
+      
+      // Chỉnh màu nền biển dựa trên bầu trời (nhưng đậm hơn)
+      // Giảm tỷ lệ xuống 0.35 để biển đêm sâu và thẫm hơn, không bị "xanh lè" khi nhìn gần
+      const baseMult = weather.label.includes('Đêm') ? 0.35 : 0.15; 
+      material.uniforms.uWaterBase.value.copy(material.uniforms.uSkyHorizon.value).multiplyScalar(baseMult);
+
+      // Chỉnh hướng mặt trời/mặt trăng
+      if (weather.label.includes('Đêm')) {
+        // Mặt trăng cao hơn một chút để tạo điểm lấp lánh sắc nét hơn
+        material.uniforms.uSunDir.value.set(-0.5, 0.4, -0.5).normalize();
+      } else {
+        material.uniforms.uSunDir.value.set(0.6, 0.8, 0.2).normalize();
+      }
     }
   });
 
   return (
-    <mesh 
-      ref={meshRef} 
-      rotation={[-Math.PI / 2, 0, 0]} 
+    <mesh
+      ref={meshRef}
+      rotation={[-Math.PI / 2, 0, 0]}
       position={[0, y, 0]}
       material={material}
+      renderOrder={-1}
     >
-      {/* Chia nhiều segments để sóng trông mượt mà hơn */}
-      <planeGeometry args={[size, size, 64, 64]} />
+      {/* Higher segment count for smoother normal interpolation */}
+      <planeGeometry args={[size, size, 1, 1]} />
     </mesh>
   );
 };
 
 export default Ocean;
+

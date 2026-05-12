@@ -61,6 +61,7 @@ const Checkpoint = ({ position, rotation, index, scale = [30, 15, 2], debug }) =
           opacity={isTarget ? 0.5 : (isReached ? 0.2 : 0.1)}
           emissive={isTarget ? '#ffcc00' : (isReached ? '#00ff88' : '#000000')}
           emissiveIntensity={isTarget ? 2 : 0.5}
+          fog={false}
         />
       </mesh>
       {/* Pillar markers */}
@@ -119,7 +120,7 @@ const CheckerboardPattern = ({ width = 10, depth = 2, repeatX = 8, repeatY = 2 }
   return (
     <mesh rotation={[-Math.PI / 2, 0, 0]} position={[0, 0.02, 0]} receiveShadow>
       <planeGeometry args={[width, depth]} />
-      <meshStandardMaterial map={texture} roughness={0.8} transparent opacity={0.9} />
+      <meshStandardMaterial map={texture} roughness={0.8} transparent opacity={0.9} fog={false} />
     </mesh>
   );
 };
@@ -208,6 +209,7 @@ const FinishSensor = ({ position, offset, radius = 6, startLinePos, debug }) => 
             opacity={0.3} 
             emissive={isActive ? '#00ff88' : '#ff4444'}
             emissiveIntensity={isActive ? 5 : 1}
+            fog={false}
           />
         </mesh>
         

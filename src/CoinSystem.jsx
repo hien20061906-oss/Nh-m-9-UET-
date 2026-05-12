@@ -108,12 +108,14 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
         emissive: "#FFD700", 
         emissiveIntensity: 0.8, 
         metalness: 1, 
-        roughness: 0.1 
+        roughness: 0.1,
+        fog: false // Đảm bảo đồng xu luôn sáng vàng trong sương mù
       }),
       shadow: new THREE.MeshBasicMaterial({ 
         color: "#000000", 
         transparent: true, 
-        opacity: 0.3 
+        opacity: 0.3,
+        fog: false
       })
     }
   }), []);
@@ -241,10 +243,10 @@ const MapCoins = ({ numCoins = 15, onCollect }) => {
   return (
     <group name="map-coins-instanced">
       <instancedMesh ref={diskRef} args={[geometries.disk, null, numCoins]}>
-        <meshBasicMaterial map={texture} transparent alphaTest={0.5} />
+        <meshBasicMaterial map={texture} transparent alphaTest={0.5} fog={false} />
       </instancedMesh>
       <instancedMesh ref={backDiskRef} args={[geometries.disk, null, numCoins]}>
-        <meshBasicMaterial map={texture} transparent alphaTest={0.5} />
+        <meshBasicMaterial map={texture} transparent alphaTest={0.5} fog={false} />
       </instancedMesh>
       <instancedMesh ref={torusRef} args={[geometries.torus, materials.torus, numCoins]} />
       <instancedMesh ref={shadowRef} args={[geometries.shadow, materials.shadow, numCoins]} />

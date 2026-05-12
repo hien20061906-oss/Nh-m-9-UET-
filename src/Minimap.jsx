@@ -16,6 +16,7 @@ export const TELEPORT_LOCATIONS = [
   { name: 'Khu VNU', position: [-25, 1, -95], rotation: 0, icon: '🏫', color: '#ff6b6b', mapPos: { x: 42, y: 72 } },
   { name: 'LAP', position: [10, 1, -350], rotation: 0, icon: '💻', color: '#ffd93d', mapPos: { x: 48, y: 13 } },
   { name: 'Tháp', position: [-95, 1, -175], rotation: 0, icon: '🗼', color: '#c084fc', mapPos: { x: 14, y: 38 } },
+  { name: 'Bến Tàu', position: [-289, 1, 50], rotation: Math.PI / 2, icon: '⚓', color: '#0055ff', mapPos: { x: 7.6, y: 68.8 } },
 ];
 
 /**
